@@ -1,1 +1,1 @@
-web: gunicorn backend.zort:app
+web: gunicorn backend.main_app:app
