@@ -1,0 +1,144 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #4CAF50; /* Canlı yeşil */
+  --secondary: #03A9F4; /* Canlı mavi */
+  --accent: #FF9800; /* Turuncu */
+  --success: #8BC34A; /* Açık yeşil */
+  --warning: #FFC107; /* Sarı */
+  --error: #F44336; /* Kırmızı */
+  --background-gradient-start: #6A11CB; /* Gradient başlangıç rengi (mor tonları) */
+  --background-gradient-end: #2575FC; /* Gradient bitiş rengi (mavi tonları) */
+  --surface: #FFFFFF; /* Beyaz yüzey */
+  --text-primary: #FFFFFF; /* Beyaz (metin için) */
+  --text-secondary: #E0E0E0; /* Açık gri (yardımcı metin için) */
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  color: var(--text-primary);
+  background: linear-gradient(135deg, var(--background-gradient-start), var(--background-gradient-end));
+  background-size: 200% 200%;
+  animation: gradientAnimation 15s ease infinite;
+  line-height: 1.5;
+  cursor: none; /* Varsayılan fare imlecini gizle */
+  position: relative;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  line-height: 1.2;
+}
+
+.card {
+  @apply bg-[var(--surface)] rounded-lg shadow-md overflow-hidden transition-shadow duration-300;
+}
+
+.card:hover {
+  @apply shadow-lg;
+}
+
+.btn {
+  @apply px-4 py-2 rounded-md font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+}
+
+.btn-primary {
+  @apply bg-[var(--primary)] text-white hover:bg-green-600 focus:ring-green-500;
+}
+
+.btn-secondary {
+  @apply bg-[var(--secondary)] text-white hover:bg-blue-600 focus:ring-blue-500;
+}
+
+.btn-accent {
+  @apply bg-[var(--accent)] text-white hover:bg-orange-600 focus:ring-orange-500;
+}
+
+.btn-ghost {
+  @apply bg-transparent text-[var(--text-secondary)] hover:bg-gray-200 focus:ring-gray-500;
+}
+
+.slider-container {
+  @apply w-full my-4;
+}
+
+.slider {
+  @apply w-full h-2 bg-gray-600 rounded-md appearance-none cursor-pointer;
+}
+
+.slider::-webkit-slider-thumb {
+  @apply appearance-none w-4 h-4 rounded-full bg-[var(--primary)] cursor-pointer;
+}
+
+.slider::-moz-range-thumb {
+  @apply w-4 h-4 rounded-full bg-[var(--primary)] cursor-pointer border-none;
+}
+
+.image-container {
+  @apply flex justify-center items-center overflow-hidden bg-[var(--surface)] rounded-lg;
+}
+
+.image-container img {
+  @apply max-w-full max-h-full object-contain;
+}
+
+/* Fare imlecinin ucunda sarı bir nokta */
+body::after {
+  content: '';
+  position: fixed;
+  width: 10px;
+  height: 10px;
+  background-color: var(--warning);
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+body:hover::after {
+  animation: pulse 1.5s infinite;
+}
+
+/* Fare imlecini her zaman görünür yap */
+html, body {
+  cursor: default;
+}
+
+/* Arka plan animasyonu */
+@keyframes gradientAnimation {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Fade-in animasyonu */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideIn {
+  from { transform: translateY(10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.5);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
