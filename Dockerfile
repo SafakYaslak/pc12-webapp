@@ -3,16 +3,13 @@
 # ============================
 FROM node:20-alpine AS frontend-builder
 
-# Frontend için izole bir çalışma dizini
-WORKDIR /frontend
+# 1) Çalışma dizini
+WORKDIR /build
 
-# Sadece frontend’e ait dosyaları kopyala
-COPY package.json package-lock.json vite.config.ts index.html ./
-COPY postcss.config.js tailwind.config.js tsconfig*.json ./
-COPY public ./public
-COPY src ./src
+# 2) Proje kökünü (safak/ içindeki her şeyi) kopyala
+COPY . .
 
-# Bağımlılıkları yükle ve üretim derlemesi yap
+# 3) Frontend bağımlılıklarını yükle ve build al
 RUN npm install
 RUN npm run build
 
@@ -22,27 +19,28 @@ RUN npm run build
 # ============================
 FROM python:3.10-slim AS backend
 
-# Sistem kütüphaneleri (OpenCV gibi şeyler gerekiyorsa)
+# 1) Sistem paketleri (OpenCV lib gibi gerekirse)
 RUN apt-get update && apt-get install -y \
     build-essential \
     libgl1-mesa-glx \
     && rm -rf /var/lib/apt/lists/*
 
-# Backend için çalışma dizini
+# 2) Çalışma dizini
 WORKDIR /app
 
-# Python bağımlılıklarını yükle
+# 3) Python bağımlılıklarını yükle
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Backend kodunu kopyala
+# 4) Backend kodunu kopyala
 COPY backend ./backend
 
-# Frontend build çıktısını backend/public klasörüne kopyala
-COPY --from=frontend-builder /frontend/dist ./backend/public
+# 5) Frontend build çıktısını backend/public altına kopyala
+#    (builder aşamasında /build/dist varsa, getirsin)
+COPY --from=frontend-builder /build/dist ./backend/public
 
-# Flask portu
+# 6) Port aç
 EXPOSE 5000
 
-# Uygulamayı başlat
+# 7) Uygulamayı başlat
 CMD ["python", "backend/main_app.py"]
