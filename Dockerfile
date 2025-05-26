@@ -3,19 +3,22 @@
 # ======================
 FROM node:20-alpine AS frontend-builder
 
-# Çalışma dizinini ayarla
 WORKDIR /app
 
-# package.json ve lock dosyasını kopyala
+# package.json ve lock dosyalarını kopyala
 COPY package*.json ./
+
+# Diğer config dosyalarını kopyala
 COPY vite.config.ts tsconfig*.json postcss.config.js tailwind.config.js ./
+
+# public ve src klasörlerini kopyala
 COPY public ./public
 COPY src ./src
 
-# Gerekli node modüllerini yükle
+# node modüllerini yükle
 RUN npm install
 
-# Frontend'i üretime hazır olarak derle
+# frontend build
 RUN npm run build
 
 
@@ -24,27 +27,26 @@ RUN npm run build
 # ======================
 FROM python:3.11-slim AS backend
 
-# Sistem bağımlılıkları
 RUN apt-get update && apt-get install -y \
     build-essential \
     libgl1-mesa-glx \
     && rm -rf /var/lib/apt/lists/*
 
-# Çalışma dizinini ayarla
 WORKDIR /app
 
-# Backend dosyalarını kopyala
+# Backend klasörünü kopyala
 COPY backend ./backend
 
-# Frontend build çıktısını backend/public altına kopyala
-COPY --from=frontend-builder /app/dist ./dist
-
-# Backend bağımlılıklarını yükle
-COPY backend/requirements.txt .
+# Backend requirements.txt'yi kopyala ve yükle
+COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Gerekirse portu aç (örneğin Flask için)
+# Frontend build çıktısını backend/public klasörüne kopyala
+# Böylece backend uygulaman public klasöründeki frontend build dosyalarına erişebilir
+COPY --from=frontend-builder /app/dist ./backend/public
+
+# Flask için port aç
 EXPOSE 5000
 
-# Uygulama başlangıcı
+# Flask uygulamasını başlat
 CMD ["python", "backend/main_app.py"]

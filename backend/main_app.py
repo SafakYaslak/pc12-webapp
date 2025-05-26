@@ -11,7 +11,7 @@ from scipy import stats as scipy_stats # 'branchLength' ve 'angles' analizleri i
 from scipy.spatial import ConvexHull # 'angles' analizi için
 import os
 
-app = Flask(__name__, static_folder="dist")
+app = Flask(__name__, static_folder='public', static_url_path='/')
 CORS(app)
 
 @app.route('/', methods=['GET'])
