@@ -27,13 +27,20 @@ def serve_static(path):
         return send_from_directory(app.static_folder, 'index.html')
 # --- Global Yapılandırma: Dosya Yolları ---
 # Mask klasör yollarını güncelle
-ORIGINAL_IMAGES_PATH = r"C:\Users\safak\Desktop\pc12_dataset\safak\public\images\original"
-CELL_MASKS_PATH = r"C:\Users\safak\Desktop\pc12_dataset\safak\public\images\masks\cell"
-BRANCH_MASKS_PATH = r"C:\Users\safak\Desktop\pc12_dataset\safak\public\images\masks\branch"
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 
-CELL_MODEL_PATH = r"C:\Users\safak\Desktop\pc12_dataset\safak\backend\best_cell_model.hdf5"
-BEST_MODEL_PATH = r"C:\Users\safak\Desktop\pc12_dataset\safak\backend\best_model.hdf5"
-BRANCH_MODEL_PATH = r"C:\Users\safak\Desktop\pc12_dataset\safak\backend\best_branch_model.hdf5"
+# 2. proje kökü = bir seviye yukarı
+PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
+
+# 3. göreli yollar
+ORIGINAL_IMAGES_PATH = os.path.join(PROJECT_ROOT, 'public', 'images', 'original')
+CELL_MASKS_PATH     = os.path.join(PROJECT_ROOT, 'public', 'images', 'masks', 'cell')
+BRANCH_MASKS_PATH   = os.path.join(PROJECT_ROOT, 'public', 'images', 'masks', 'branch')
+
+# modeller backend içinde
+CELL_MODEL_PATH     = os.path.join(BACKEND_DIR, 'best_cell_model.hdf5')
+BEST_MODEL_PATH     = os.path.join(BACKEND_DIR, 'best_model.hdf5')
+BRANCH_MODEL_PATH   = os.path.join(BACKEND_DIR, 'best_branch_model.hdf5')
 
 # --- Yardımcı Fonksiyonlar: Keras Modelleri için Metrikler ---
 def dice_coef(y_true, y_pred):
