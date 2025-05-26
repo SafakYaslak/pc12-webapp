@@ -12,7 +12,7 @@ RUN npm run build
 # ============================
 # 🔹 STAGE 2: Backend (Python + Flask)
 # ============================
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 # Sistem bağımlılıkları
 RUN apt-get update && apt-get install -y \
@@ -24,7 +24,7 @@ WORKDIR /app
 
 # Pip'i güncelle ve bağımlılıkları yükle
 COPY backend/requirements.txt ./
-RUN pip install --upgrade pip && \
+RUN pip install --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r requirements.txt
 
 # Uygulama kodunu kopyala
