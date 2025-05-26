@@ -3,18 +3,21 @@
 # ============================
 FROM node:20-alpine AS frontend-builder
 
-# 1) Çalışma dizini
 WORKDIR /app
 
-# 2) Önce bağımlılıkları kopyala (cache optimizasyonu için)
+# 1) Önce bağımlılık dosyalarını kopyala (cache optimizasyonu için)
 COPY package.json package-lock.json ./
-COPY vite.config.ts ./
-RUN npm install
 
-# 3) Geri kalan dosyaları kopyala
+# 2) Tüm bağımlılıkları yükle (yereldekiyle aynı versiyonlar için)
+RUN npm ci --legacy-peer-deps
+
+# 3) Kaynak kodları kopyala
 COPY . .
 
-# 4) Build işlemi (çıktı direkt backend/public'e gidecek)
+# 4) Browserslist güncellemesi
+RUN npx update-browserslist-db@latest
+
+# 5) Build işlemi
 RUN npm run build
 
 # ============================
@@ -38,7 +41,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 4) Backend kodunu kopyala
 COPY backend ./backend
 
-# 5) Frontend build çıktısını kopyala (vite.config.ts'de belirtilen dizin)
+# 5) Frontend build çıktısını kopyala
 COPY --from=frontend-builder /app/backend/public ./backend/public
 
 # 6) Port aç
