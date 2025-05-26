@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import base64
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import tensorflow as tf
 from skimage.morphology import skeletonize
@@ -11,8 +11,19 @@ from scipy import stats as scipy_stats # 'branchLength' ve 'angles' analizleri i
 from scipy.spatial import ConvexHull # 'angles' analizi için
 import os
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="dist")
 CORS(app)
+
+@app.route('/', methods=['GET'])
+def serve_index():
+    return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/<path:path>', methods=['GET'])
+def serve_static(path):
+    full_path = os.path.join(app.static_folder, path)
+    if os.path.isfile(full_path):
+        return send_from_directory(app.static_folder, path)
+    return send_from_directory(app.static_folder, 'index.html')
 
 # --- Global Yapılandırma: Dosya Yolları ---
 # Mask klasör yollarını güncelle

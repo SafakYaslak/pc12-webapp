@@ -37,7 +37,7 @@ WORKDIR /app
 COPY backend ./backend
 
 # Frontend build çıktısını backend/public altına kopyala
-COPY --from=frontend-builder /app/dist ./backend/public
+COPY --from=frontend-builder /app/dist ./dist
 
 # Backend bağımlılıklarını yükle
 COPY backend/requirements.txt .

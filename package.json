@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "start-backend": "cd backend && python zort.py",
+    "start-backend": "cd backend && python main_app.py",
     "start-frontend": "vite",
     "dev": "concurrently --kill-others --names \"BACKEND,FRONTEND\" -c \"blue.bold,green.bold\" \"npm run start-backend\" \"npm run start-frontend\"",
     "build": "vite build",
