@@ -14,17 +14,17 @@ import os
 app = Flask(__name__, static_folder='public', static_url_path='/')
 CORS(app)
 
+# Statik dosya servisi
 @app.route('/', methods=['GET'])
 def serve_index():
     return send_from_directory(app.static_folder, 'index.html')
 
 @app.route('/<path:path>', methods=['GET'])
 def serve_static(path):
-    full_path = os.path.join(app.static_folder, path)
-    if os.path.isfile(full_path):
+    try:
         return send_from_directory(app.static_folder, path)
-    return send_from_directory(app.static_folder, 'index.html')
-
+    except:
+        return send_from_directory(app.static_folder, 'index.html')
 # --- Global Yapılandırma: Dosya Yolları ---
 # Mask klasör yollarını güncelle
 ORIGINAL_IMAGES_PATH = r"C:\Users\safak\Desktop\pc12_dataset\safak\public\images\original"
