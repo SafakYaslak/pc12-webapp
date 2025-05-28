@@ -379,7 +379,25 @@ def process_image_route():
                 }
             }
             encoded_image = encode_image_to_base64(output_display_img)
-            return jsonify({'processedImage': encoded_image, 'analysisResults': results})
+            
+            # Cell visualization için kırmızı transparan overlay oluştur
+            cell_visualization = original_img.copy()
+            # Kırmızı maske oluştur - transparanlık kaldırıldı
+            overlay = np.zeros_like(original_img)
+            overlay[refined_segmentation > 0] = (0, 0, 255)  # BGR format - kırmızı
+            # Maskeyi orijinal görüntüyle birleştir - addWeighted yerine doğrudan atama
+            cell_visualization[refined_segmentation > 0] = (0, 0, 255)  # Tamamen kırmızı
+
+            # Contour'ları çiz
+            contours, _ = cv2.findContours(refined_segmentation, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cv2.drawContours(cell_visualization, contours, -1, (255, 255, 255), 3)  # Beyaz contour'lar
+            # Base64'e çevir
+            encoded_cell_vis = encode_image_to_base64(cell_visualization)
+            return jsonify({
+                'processedImage': encoded_image, 
+                'cellVisualization': encoded_cell_vis,  # Yeni visualization
+                'analysisResults': results
+            })
         except Exception as e:
             app.logger.error(f"'cell' analizi sırasında hata: {e}", exc_info=True)
             return jsonify({"error": f"'cell' analizi sırasında hata: {str(e)}"}), 500

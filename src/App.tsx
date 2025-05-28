@@ -16,6 +16,7 @@ const App: React.FC = () => {
   const [processedImages, setProcessedImages] = useState<Record<string, ImageData>>({});
   const [activeAnalysis, setActiveAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [cellVisualization, setCellVisualization] = useState<string | null>(null);
 
   const handleImageUpload = (imageData: ImageData) => {
     setUploadedImage(imageData);
@@ -56,6 +57,13 @@ const App: React.FC = () => {
       }
   
       const data = await response.json();
+  
+      // Cell visualization'ı kaydet
+      if (analysisType === 'cell' && data.cellVisualization) {
+        setCellVisualization(data.cellVisualization);
+      } else {
+        setCellVisualization(null);
+      }
   
       // İşlenmiş görseli state'e kaydet
       const processed: ImageData = {
@@ -156,6 +164,7 @@ const App: React.FC = () => {
                       originalImage={uploadedImage} 
                       processedImage={activeAnalysis ? processedImages[activeAnalysis] : null}
                       isProcessing={isAnalyzing}
+                      cellVisualization={cellVisualization}  // Yeni prop
                     />
                   </div>
                 </div>

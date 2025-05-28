@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, SplitSquareHorizontal, Layers, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, SplitSquareHorizontal, Layers, Cells } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ImageData } from '../types';
 
@@ -7,15 +7,19 @@ interface ComparisonViewProps {
   originalImage: ImageData | null;
   processedImage: ImageData | null;
   isProcessing: boolean;
+  cellVisualization?: string | null; // Yeni prop eklendi
 }
+
+type ViewMode = 'split' | 'overlay' | 'cell';
 
 const ComparisonView: React.FC<ComparisonViewProps> = ({ 
   originalImage, 
   processedImage,
-  isProcessing
+  isProcessing,
+  cellVisualization
 }) => {
   const [splitPosition, setSplitPosition] = useState(50);
-  const [overlayMode, setOverlayMode] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('split');
   
   if (!originalImage) {
     return null;
@@ -35,36 +39,58 @@ const ComparisonView: React.FC<ComparisonViewProps> = ({
             className={`
               relative px-4 py-2 rounded-lg font-medium text-sm
               transition-all duration-300
-              ${overlayMode 
-                ? 'text-gray-600 hover:text-rose-600' 
-                : 'bg-gradient-to-r from-rose-500 to-amber-500 text-white shadow-lg'
+              ${viewMode === 'split'
+                ? 'bg-gradient-to-r from-rose-500 to-amber-500 text-white shadow-lg'
+                : 'text-gray-600 hover:text-rose-600'
               }
             `}
-            onClick={() => setOverlayMode(false)}
+            onClick={() => setViewMode('split')}
           >
             <div className="flex items-center gap-2">
               <SplitSquareHorizontal size={16} />
               Split View
             </div>
           </motion.button>
+          
           <motion.button 
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             className={`
               relative px-4 py-2 rounded-lg font-medium text-sm
               transition-all duration-300
-              ${!overlayMode 
-                ? 'text-gray-600 hover:text-rose-600' 
-                : 'bg-gradient-to-r from-rose-500 to-amber-500 text-white shadow-lg'
+              ${viewMode === 'overlay'
+                ? 'bg-gradient-to-r from-rose-500 to-amber-500 text-white shadow-lg'
+                : 'text-gray-600 hover:text-rose-600'
               }
             `}
-            onClick={() => setOverlayMode(true)}
+            onClick={() => setViewMode('overlay')}
           >
             <div className="flex items-center gap-2">
               <Layers size={16} />
               Overlay
             </div>
           </motion.button>
+          
+          {processedImage?.analysisType === 'cell' && (
+            <motion.button 
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className={`
+                relative px-4 py-2 rounded-lg font-medium text-sm
+                transition-all duration-300
+                ${viewMode === 'cell'
+                  ? 'bg-gradient-to-r from-rose-500 to-amber-500 text-white shadow-lg'
+                  : 'text-gray-600 hover:text-rose-600'
+                }
+              `}
+              onClick={() => setViewMode('cell')}
+            >
+              <div className="flex items-center gap-2">
+                <Eye size={16} />
+                Cell Details
+              </div>
+            </motion.button>
+          )}
         </div>
       </div>
       
@@ -114,8 +140,9 @@ const ComparisonView: React.FC<ComparisonViewProps> = ({
               <div 
                 className="absolute top-0 left-0 w-full h-full flex items-center justify-center"
                 style={{ 
-                  opacity: overlayMode ? 0.5 : 1,
-                  clipPath: overlayMode ? 'none' : `inset(0 ${100 - splitPosition}% 0 0)`
+                  opacity: viewMode === 'overlay' ? 0.5 : 1,
+                  clipPath: viewMode === 'split' ? `inset(0 ${100 - splitPosition}% 0 0)` : 'none',
+                  display: viewMode === 'cell' ? 'none' : 'flex'
                 }}
               >
                 <img 
@@ -130,7 +157,8 @@ const ComparisonView: React.FC<ComparisonViewProps> = ({
                 <div 
                   className="absolute top-0 left-0 w-full h-full flex items-center justify-center"
                   style={{ 
-                    clipPath: overlayMode ? 'none' : `inset(0 0 0 ${splitPosition}%)`
+                    clipPath: viewMode === 'split' ? `inset(0 0 0 ${splitPosition}%)` : 'none',
+                    display: viewMode === 'cell' ? 'none' : 'flex'
                   }}
                 >
                   <img 
@@ -141,8 +169,24 @@ const ComparisonView: React.FC<ComparisonViewProps> = ({
                 </div>
               )}
               
+              {/* Cell Visualization Image */}
+              {cellVisualization && processedImage?.analysisType === 'cell' && (
+                <div 
+                  className="absolute top-0 left-0 w-full h-full flex items-center justify-center"
+                  style={{ 
+                    display: viewMode === 'cell' ? 'flex' : 'none'
+                  }}
+                >
+                  <img 
+                    src={cellVisualization} 
+                    alt="Cell Visualization" 
+                    className="max-h-full max-w-full object-contain"
+                  />
+                </div>
+              )}
+              
               {/* Split Line */}
-              {!overlayMode && processedImage && (
+              {viewMode === 'split' && processedImage && (
                 <div 
                   className="absolute top-0 bottom-0 w-1 bg-white cursor-col-resize"
                   style={{ left: `${splitPosition}%` }}
@@ -192,7 +236,7 @@ const ComparisonView: React.FC<ComparisonViewProps> = ({
         )}
       </motion.div>
       
-      {!overlayMode && processedImage && (
+      {viewMode === 'split' && processedImage && (
         <motion.div 
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
