@@ -1,11 +1,17 @@
 import React from 'react';
 import { 
+  BarChart2, 
+  Table,
+  Sparkles,
+  Activity,
+  LineChart,
+  TrendingUp,
+  PieChart,
+  Zap
+} from 'lucide-react';
+import { 
   Tabs, TabsList, TabsTrigger, TabsContent 
 } from './ui/Tabs';
-import { 
-  BarChart2, 
-  Table
-} from 'lucide-react';
 import { ImageData } from '../types';
 import HistogramChart from './charts/HistogramChart';
 import StatisticsTable from './charts/StatisticsTable';
@@ -67,14 +73,15 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({ analysisType, imageData }) 
     if (analysisType === 'cell') {
       const ar = imageData.analysisResults;
       const cellStats = {
-        'Count': ar.cellCount ?? 0,
-        'Mean Perimeter (px)': (ar.meanPerimeter ?? 0).toFixed(2),
-        'Mean Feret Diameter (px)': (ar.meanFeret ?? 0).toFixed(2),
-        'Mean Eccentricity': (ar.meanEccentricity ?? 0).toFixed(2),
-        'Mean Aspect Ratio': (ar.meanAspectRatio ?? 0).toFixed(2),
-        'Mean Centroid Dist. (px)': (ar.meanCentroidDist ?? 0).toFixed(2),
-        'Mean BBox Width (px)': (ar.meanBBoxWidth ?? 0).toFixed(2),
-        'Mean BBox Height (px)': (ar.meanBBoxHeight ?? 0).toFixed(2),
+        'cellCount': ar.cellCount ?? 0,
+        'cellDensity': ar.cellDensity ?? 0,
+        'meanPerimeter': ar.meanPerimeter ?? 0,
+        'meanFeret': ar.meanFeret ?? 0,
+        'meanEccentricity': ar.meanEccentricity ?? 0,
+        'meanAspectRatio': ar.meanAspectRatio ?? 0,
+        'meanCentroidDist': ar.meanCentroidDist ?? 0,
+        'meanBBoxWidth': ar.meanBBoxWidth ?? 0,
+        'meanBBoxHeight': ar.meanBBoxHeight ?? 0
       };
       
       return {
@@ -104,21 +111,20 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({ analysisType, imageData }) 
     if (analysisType === 'branchLength') {
       const ar = imageData.analysisResults;
       const branchLengthStats = {
-        'Total Branches': ar.totalBranches ?? 0,
-        'Average Length (px)': (ar.averageLength ?? 0).toFixed(2),
-        'Min Length (px)': (ar.minLength ?? 0).toFixed(2),
-        'Max Length (px)': (ar.maxLength ?? 0).toFixed(2),
-        'Std Deviation (px)': (ar.stdLength ?? 0).toFixed(2),
-        'Median Length (px)': (ar.medianLength ?? 0).toFixed(2),
-        'Variance Length (px²)': (ar.varianceLength ?? 0).toFixed(2),
-        'Longest 5 Mean (px)': (ar.longest5Mean ?? 0).toFixed(2),
-        'Shortest 5 Mean (px)': (ar.shortest5Mean ?? 0).toFixed(2),
-        '25th Percentile (px)': (ar.percentile25 ?? 0).toFixed(2),
-        '75th Percentile (px)': (ar.percentile75 ?? 0).toFixed(2),
-        'Interquartile Range (px)': (ar.iqr ?? 0).toFixed(2),
-        'Total Length Sum (px)': (ar.lengthSum ?? 0).toFixed(2),
-        'Length Skewness': (ar.lengthSkewness ?? 0).toFixed(2),
-        'Length Kurtosis': (ar.lengthKurtosis ?? 0).toFixed(2)
+        'totalBranches': ar.totalBranches ?? 0,
+        'averageLength': ar.averageLength ?? 0,
+        'minLength': ar.minLength ?? 0,
+        'maxLength': ar.maxLength ?? 0,
+        'stdDeviation': ar.stdLength ?? 0,
+        'medianLength': ar.medianLength ?? 0,
+        'varianceLength': ar.varianceLength ?? 0,
+        'longest5Mean': ar.longest5Mean ?? 0,
+        'shortest5Mean': ar.shortest5Mean ?? 0,
+        'percentile25': ar.percentile25 ?? 0,
+        'percentile75': ar.percentile75 ?? 0,
+        'iqr': ar.iqr ?? 0,
+        'lengthSum': ar.lengthSum ?? 0,
+        'lengthSkewness': ar.lengthSkewness ?? 0
       };
     
       return {
@@ -132,17 +138,17 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({ analysisType, imageData }) 
     if (analysisType === 'angles') {
       const ar = imageData.analysisResults;
       const angleStats = {
-        'Average Angle (°)': (ar.average ?? 0).toFixed(2),
-        'Min Angle (°)': (ar.min ?? 0).toFixed(2),
-        'Max Angle (°)': (ar.max ?? 0).toFixed(2),
-        'Std Dev (°)': (ar.std ?? 0).toFixed(2),
-        'Resultant Vector Length': (ar.resultantVectorLength ?? 0).toFixed(3),
-        'Angular Entropy': (ar.angularEntropy ?? 0).toFixed(3),
-        'Angle Skewness': (ar.angleSkewness ?? 0).toFixed(3),
-        'Fractal Dimension': (ar.fractalDimension ?? 0).toFixed(2),
-        'Max Branch Order': ar.maxBranchOrder ?? 0,
-        'Node Degree Mean': (ar.nodeDegreeMean ?? 0).toFixed(2),
-        'Convex Hull Compactness': (ar.convexHullCompactness ?? 0).toFixed(2)
+        'averageAngle': ar.average ?? 0,
+        'minAngle': ar.min ?? 0,
+        'maxAngle': ar.max ?? 0,
+        'stdDevAngle': ar.std ?? 0,
+        'resultantVectorLength': ar.resultantVectorLength ?? 0,
+        'angularEntropy': ar.angularEntropy ?? 0,
+        'angleSkewness': ar.angleSkewness ?? 0,
+        'fractalDimension': ar.fractalDimension ?? 0,
+        'maxBranchOrder': ar.maxBranchOrder ?? 0,
+        'nodeDegree': ar.nodeDegreeMean ?? 0,
+        'convexHullCompactness': ar.convexHullCompactness ?? 0
       };
 
       return {
@@ -157,11 +163,11 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({ analysisType, imageData }) 
     if (analysisType === 'cellArea') {
       const ar = imageData.analysisResults;
       const areaStats = {
-        'Total Cells': ar.totalCells ?? 0,
-        'Mean Cell Area (px²)': (ar.averageArea ?? 0).toFixed(2),
-        'Minimum Cell Area (px²)': (ar.minArea ?? 0).toFixed(2),
-        'Maximum Cell Area (px²)': (ar.maxArea ?? 0).toFixed(2),
-        'Std Dev Cell Area (px²)': (ar.std ?? 0).toFixed(2),
+        'totalCells': ar.totalCells ?? 0,
+        'meanCellArea': ar.averageArea ?? 0,
+        'minCellArea': ar.minArea ?? 0,
+        'maxCellArea': ar.maxArea ?? 0,
+        'stdDevCellArea': ar.std ?? 0
       };
 
       return {
@@ -202,36 +208,67 @@ const ResultsPanel: React.FC<ResultsPanelProps> = ({ analysisType, imageData }) 
   };
 
   return (
-    <div>
+    <div className="space-y-6 animate-fade-in">
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-4">
-          <TabsTrigger value="histogram" className="flex items-center">
-            <BarChart2 size={16} className="mr-1" />
-            Histogram
+        <TabsList className="mb-6 p-1 bg-gradient-to-r from-rose-100/50 via-orange-100/50 to-amber-100/50 rounded-lg backdrop-blur-sm">
+          <TabsTrigger 
+            value="histogram" 
+            className="flex items-center space-x-2 transition-all duration-300 hover:scale-105"
+          >
+            <div className="relative">
+              <BarChart2 size={18} className="text-rose-500 transition-transform group-hover:scale-110" />
+              <Sparkles size={10} className="absolute -top-1 -right-1 text-amber-500 animate-pulse" />
+            </div>
+            <span>Histogram</span>
           </TabsTrigger>
-          <TabsTrigger value="statistics" className="flex items-center">
-            <Table size={16} className="mr-1" />
-            Statistics
+          <TabsTrigger 
+            value="statistics" 
+            className="flex items-center space-x-2 transition-all duration-300 hover:scale-105"
+          >
+            <div className="relative">
+              <Table size={18} className="text-orange-500 transition-transform group-hover:scale-110" />
+              <Activity size={10} className="absolute -top-1 -right-1 text-rose-500 animate-pulse" />
+            </div>
+            <span>Statistics</span>
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="histogram" className="animate-fade-in">
-          <div className="bg-gray-50 rounded-lg p-4">
-            <h3 className="text-lg font-medium text-gray-800 mb-4">
-              {getResultTitle()} Distribution
-            </h3>
-            <div className="h-64">
+        <TabsContent 
+          value="histogram" 
+          className="animate-fade-in transform transition-all duration-500"
+        >
+          <div className="bg-gradient-to-br from-rose-50/30 via-orange-50/30 to-amber-50/30 backdrop-blur-sm rounded-xl p-4 shadow-lg hover:shadow-xl transition-all duration-300 group">
+            <div className="flex items-center space-x-3 mb-4">
+              <LineChart className="text-rose-500 group-hover:scale-110 transition-transform duration-300" size={24} />
+              <h3 className="text-xl font-medium bg-gradient-to-r from-rose-600 to-amber-600 bg-clip-text text-transparent">
+                {getResultTitle()} Distribution
+              </h3>
+              <TrendingUp className="text-amber-500 animate-bounce-slow ml-auto" size={20} />
+            </div>
+            
+            {/* Container for histogram */}
+            <div className="w-full overflow-hidden">
               <HistogramChart data={realResults.histogram} />
             </div>
           </div>
         </TabsContent>
 
-        <TabsContent value="statistics" className="animate-fade-in">
-          <div className="bg-gray-50 rounded-lg p-4">
-            <h3 className="text-lg font-medium text-gray-800 mb-4">
-              {getResultTitle()} Statistics
-            </h3>
-            <StatisticsTable statistics={realResults.statistics} />
+        <TabsContent 
+          value="statistics" 
+          className="animate-fade-in transform transition-all duration-500"
+        >
+          <div className="bg-gradient-to-br from-orange-50/30 via-rose-50/30 to-amber-50/30 backdrop-blur-sm rounded-xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 group">
+            <div className="flex items-center space-x-3 mb-6">
+              <PieChart className="text-orange-500 group-hover:scale-110 transition-transform duration-300" size={24} />
+              <h3 className="text-xl font-medium bg-gradient-to-r from-orange-600 to-rose-600 bg-clip-text text-transparent">
+                {getResultTitle()} Statistics
+              </h3>
+              <Zap className="text-rose-500 animate-pulse ml-auto" size={20} />
+            </div>
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 via-rose-500/5 to-amber-500/5 opacity-50 group-hover:opacity-70 transition-opacity duration-300 rounded-xl" />
+              <StatisticsTable statistics={realResults.statistics} />
+            </div>
           </div>
         </TabsContent>
       </Tabs>

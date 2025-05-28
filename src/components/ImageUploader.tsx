@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Image as ImageIcon, X, ZoomIn, Check } from 'lucide-react';
 import { ImageData } from '../types';
+import { motion } from 'framer-motion';
 
 interface ImageUploaderProps {
   onImageUpload: (imageData: ImageData) => void;
@@ -72,144 +73,147 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageUpload }) => {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Project Info Banner */}
-      <div className="bg-gradient-to-r from-blue-50 to-blue-100 border-l-4 border-blue-500 p-6 rounded-xl shadow-lg">
-        <h1 className="text-3xl font-semibold text-blue-800 tracking-wide">
-          PC12 Image Analysis
-        </h1>
-        <p className="text-blue-700 mt-1 text-lg font-medium">
-          İzmir Katip Çelebi University - PC12 Project
-        </p>
+    <div className="space-y-4"> {/* spacing'i azalttık */}
+      {/* Project Info Banner - More compact and vibrant */}
+      <div className="bg-gradient-to-r from-rose-500 via-orange-400 to-amber-300 p-4 rounded-xl shadow-lg">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-white tracking-wide">
+              PC12 Image Analysis
+            </h1>
+            <p className="text-white/90 text-sm font-medium">
+              İzmir Katip Çelebi University
+            </p>
+          </div>
+          <motion.div
+            initial={{ scale: 0.9 }}
+            animate={{ scale: 1 }}
+            whileHover={{ scale: 1.05 }}
+            className="bg-white/20 p-2 rounded-lg backdrop-blur-sm"
+          >
+            <ImageIcon size={24} className="text-white" />
+          </motion.div>
+        </div>
       </div>
 
-      {/* Scrollable Image Gallery */}
+      {/* Scrollable Image Gallery - More compact grid */}
       <div className="relative">
-        <div className="max-h-[70vh] overflow-y-auto pr-4 rounded-xl">
-          <div className="grid grid-cols-2 gap-6 p-4">
+        <div className="max-h-[40vh] overflow-y-auto pr-4 rounded-xl bg-gradient-to-b from-orange-50 to-amber-50">
+          <div className="grid grid-cols-3 gap-4 p-4"> {/* 3 kolonlu grid */}
             {images.map((image) => (
-              <div
+              <motion.div
                 key={image.id}
+                whileHover={{ scale: 1.02, y: -4 }}
+                whileTap={{ scale: 0.98 }}
                 className={`
                   group relative rounded-xl overflow-hidden
-                  aspect-[16/9] // Daha geniş bir aspect ratio
-                  bg-gray-100
+                  aspect-[4/3]
+                  bg-gradient-to-br from-orange-100 via-amber-50 to-orange-100
                   transition-all duration-300 ease-in-out
-                  hover:translate-y-[-4px]
-                  hover:shadow-xl
-                  ${selectedImage?.id === image.id ? 'ring-2 ring-blue-500' : ''}
+                  shadow-lg
+                  ${selectedImage?.id === image.id ? 'ring-2 ring-rose-500' : ''}
                 `}
               >
                 {/* Image Container */}
-                <div className="absolute inset-0 bg-gray-900"> {/* Koyu arka plan */}
+                <div className="absolute inset-0">
                   <img
                     src={image.dataUrl}
                     alt={image.name}
-                    className="w-full h-full object-cover" // object-contain yerine object-cover
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.src = '/placeholder-image.png';
-                    }}
-                    loading="lazy" // Lazy loading ekledik
+                    className="w-full h-full object-cover"
+                    loading="lazy"
                   />
+                  {/* Overlay Gradient */}
+                  <div className="
+                    absolute inset-0
+                    bg-gradient-to-b from-rose-900/30 via-transparent to-rose-900/40
+                    opacity-0 group-hover:opacity-100
+                    transition-opacity duration-300
+                  "/>
                 </div>
-                
-                {/* Semi-transparent overlay for better button visibility */}
+
+                {/* Hover Actions */}
                 <div className="
-                  absolute inset-0
-                  bg-gradient-to-b from-black/20 via-transparent to-black/40
+                  absolute inset-0 flex items-center justify-center gap-2
                   opacity-0 group-hover:opacity-100
                   transition-opacity duration-300
-                "/>
-
-                {/* Actions Buttons - Always visible at top center */}
-                <div className="
-                  absolute top-3 left-1/2 -translate-x-1/2
-                  flex items-center space-x-3
-                  z-20
                 ">
-                  <button
+                  <motion.button
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleImagePreview(image);
                     }}
-                    className="
-                      p-2 bg-white/90 rounded-full
-                      shadow-lg backdrop-blur-sm
-                      hover:bg-blue-50
-                      transition-all duration-200
-                      transform hover:scale-110
-                    "
+                    className="p-2 bg-white/90 rounded-full shadow-lg backdrop-blur-sm hover:bg-rose-50"
                   >
-                    <ZoomIn className="w-5 h-5 text-blue-600" />
-                  </button>
-                  <button
+                    <ZoomIn className="w-4 h-4 text-rose-600" />
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleImageSelect(image);
                     }}
-                    className="
-                      p-2 bg-white/90 rounded-full
-                      shadow-lg backdrop-blur-sm
-                      hover:bg-green-50
-                      transition-all duration-200
-                      transform hover:scale-110
-                    "
+                    className="p-2 bg-white/90 rounded-full shadow-lg backdrop-blur-sm hover:bg-amber-50"
                   >
-                    <Check className="w-5 h-5 text-green-600" />
-                  </button>
+                    <Check className="w-4 h-4 text-amber-600" />
+                  </motion.button>
                 </div>
 
-                {/* Image Name Overlay - Shows on hover */}
+                {/* Image Name */}
                 <div className="
                   absolute bottom-0 inset-x-0
-                  bg-gradient-to-t from-black/90 to-transparent
-                  transform translate-y-full
-                  group-hover:translate-y-0
-                  transition-transform duration-300 ease-out
+                  bg-gradient-to-t from-rose-900/90 to-transparent
                   py-2
                 ">
-                  <p className="
-                    text-white text-sm font-medium
-                    text-center
-                    px-3
-                    truncate
-                  ">
+                  <p className="text-white text-xs font-medium text-center px-2 truncate">
                     {image.name}
                   </p>
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
         </div>
 
         {/* Scroll Indicator */}
-        <div className="absolute right-0 top-0 bottom-0 w-1 bg-gray-200 rounded-full">
-          <div className="w-full h-1/3 bg-blue-500 rounded-full opacity-50" />
+        <div className="absolute right-0 top-0 bottom-0 w-1">
+          <motion.div
+            className="w-full h-1/3 bg-gradient-to-b from-rose-500 to-amber-500 rounded-full opacity-50"
+            animate={{
+              y: ["0%", "200%"],
+              opacity: [0.5, 0.2, 0.5]
+            }}
+            transition={{
+              duration: 2,
+              repeat: Infinity,
+              ease: "linear"
+            }}
+          />
         </div>
       </div>
 
-      {/* Preview Modal */}
+      {/* Updated preview modal */}
       {showModal && previewImage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="relative max-w-2xl w-full"> {/* max-w-4xl -> max-w-2xl */}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-orange-950/70 p-4">
+          <div className="relative max-w-2xl w-full">
             <button
               onClick={() => setShowModal(false)}
-              className="absolute -top-10 right-0 p-2 text-white hover:text-gray-300 z-10"
+              className="absolute -top-10 right-0 p-2 text-white hover:text-orange-200 z-10"
             >
               <X className="w-6 h-6" />
             </button>
-            <div className="bg-white rounded-xl overflow-hidden shadow-2xl">
-              <div className="relative aspect-[4/3] bg-gray-900"> {/* Sabit aspect ratio */}
+            <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl overflow-hidden shadow-2xl">
+              <div className="relative aspect-[4/3] bg-gradient-to-br from-orange-900/5 to-amber-900/5">
                 <img
                   src={previewImage.dataUrl}
                   alt={previewImage.name}
-                  className="absolute inset-0 w-full h-full object-contain" 
+                  className="absolute inset-0 w-full h-full object-contain"
                 />
               </div>
-              <div className="p-4 bg-gray-50 border-t">
+              <div className="p-4 bg-gradient-to-r from-orange-50 to-amber-50 border-t border-orange-100">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-gray-800 truncate">
+                  <h3 className="text-lg font-semibold text-orange-900 truncate">
                     {previewImage.name}
                   </h3>
                   <button
@@ -217,8 +221,8 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageUpload }) => {
                       handleImageSelect(previewImage);
                       setShowModal(false);
                     }}
-                    className="px-4 py-2 bg-blue-500 text-white text-sm rounded-lg 
-                                hover:bg-blue-600 transition-colors duration-200"
+                    className="px-4 py-2 bg-orange-500 text-white text-sm rounded-lg 
+                                hover:bg-orange-600 transition-colors duration-200"
                   >
                     Select Image
                   </button>
@@ -229,19 +233,19 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageUpload }) => {
         </div>
       )}
 
-      {/* Selected Image Info */}
+      {/* Updated selected image info */}
       {selectedImage && (
-        <div className="fixed bottom-4 right-4 bg-white p-4 rounded-lg shadow-lg max-w-sm">
+        <div className="fixed bottom-4 right-4 bg-gradient-to-r from-orange-50 to-amber-50 p-4 rounded-lg shadow-lg max-w-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <ImageIcon size={20} className="text-blue-600" />
-              <span className="text-blue-800 font-medium">
+              <ImageIcon size={20} className="text-orange-600" />
+              <span className="text-orange-900 font-medium">
                 Selected: {selectedImage.name}
               </span>
             </div>
             <button
               onClick={() => setSelectedImage(null)}
-              className="text-gray-400 hover:text-gray-600"
+              className="text-orange-400 hover:text-orange-600"
             >
               <X size={16} />
             </button>
@@ -249,9 +253,9 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageUpload }) => {
         </div>
       )}
 
-      {/* Error Message */}
+      {/* Updated error message */}
       {error && (
-        <div className="fixed top-4 right-4 bg-red-50 text-red-600 p-4 rounded-lg shadow-lg">
+        <div className="fixed top-4 right-4 bg-red-50 border-l-4 border-red-500 text-red-600 p-4 rounded-lg shadow-lg">
           {error}
           <button
             onClick={() => setError(null)}

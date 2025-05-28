@@ -14,6 +14,7 @@
   "dependencies": {
     "@tensorflow/tfjs": "^4.20.0",
     "chart.js": "^4.4.1",
+    "framer-motion": "^12.15.0",
     "lucide-react": "^0.344.0",
     "opencv.js": "^1.2.1",
     "react": "^18.3.1",

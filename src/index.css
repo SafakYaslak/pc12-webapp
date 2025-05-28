@@ -14,6 +14,10 @@
   --surface: #FFFFFF; /* Beyaz yüzey */
   --text-primary: #FFFFFF; /* Beyaz (metin için) */
   --text-secondary: #E0E0E0; /* Açık gri (yardımcı metin için) */
+  --rose-500: #f43f5e;
+  --rose-600: #e11d48;
+  --amber-500: #f59e0b;
+  --amber-600: #d97706;
 }
 
 body {
@@ -64,15 +68,21 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .slider {
-  @apply w-full h-2 bg-gray-600 rounded-md appearance-none cursor-pointer;
+  @apply w-full h-2 rounded-full appearance-none bg-transparent cursor-pointer;
 }
 
 .slider::-webkit-slider-thumb {
-  @apply appearance-none w-4 h-4 rounded-full bg-[var(--primary)] cursor-pointer;
+  @apply appearance-none w-4 h-4 rounded-full 
+    bg-gradient-to-r from-rose-500 to-amber-500
+    cursor-pointer transition-all duration-200 
+    hover:scale-110 hover:shadow-lg;
 }
 
 .slider::-moz-range-thumb {
-  @apply w-4 h-4 rounded-full bg-[var(--primary)] cursor-pointer border-none;
+  @apply w-4 h-4 rounded-full 
+    bg-gradient-to-r from-rose-500 to-amber-500
+    cursor-pointer transition-all duration-200 
+    hover:scale-110 hover:shadow-lg border-none;
 }
 
 .image-container {
@@ -115,8 +125,18 @@ html, body {
 
 /* Fade-in animasyonu */
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.5s ease-out forwards;
 }
 
 @keyframes slideIn {
@@ -126,6 +146,21 @@ html, body {
 
 .animate-slide-in {
   animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.2s ease-out forwards;
 }
 
 @keyframes pulse {
@@ -141,4 +176,120 @@ html, body {
     transform: scale(1);
     opacity: 1;
   }
+}
+
+@keyframes bounce-slow {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-25%);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-bounce-slow {
+  animation: bounce-slow 3s infinite;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out forwards;
+}
+
+@keyframes scale-up {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-scale-up {
+  animation: scale-up 0.2s ease-out forwards;
+}
+
+/* Yeni animasyonlar */
+@keyframes shine {
+  from {
+    background-position: 200% center;
+  }
+  to {
+    background-position: -200% center;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.2);
+    opacity: 0;
+  }
+}
+
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Yeni utility classlar */
+.animate-shine {
+  background: linear-gradient(
+    120deg,
+    transparent,
+    rgba(244, 63, 94, 0.1),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: shine 3s linear infinite;
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 3s linear infinite;
+}
+
+.gradient-text {
+  @apply bg-gradient-to-r from-rose-500 to-amber-500 bg-clip-text text-transparent;
+}
+
+.gradient-border {
+  @apply border-transparent bg-gradient-to-r from-rose-500 to-amber-500;
+  border: double 1px transparent;
+  background-image: linear-gradient(white, white), 
+    linear-gradient(to right, #f43f5e, #f59e0b);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+}
+
+.gradient-bg {
+  @apply bg-gradient-to-r from-rose-500 to-amber-500;
+}
+
+.gradient-bg-hover {
+  @apply hover:bg-gradient-to-r hover:from-rose-600 hover:to-amber-600;
+}
+
+.shadow-gradient {
+  box-shadow: 0 4px 12px -1px rgba(244, 63, 94, 0.1),
+              0 2px 6px -1px rgba(245, 158, 11, 0.1);
 }

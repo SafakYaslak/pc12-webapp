@@ -11,36 +11,53 @@ from scipy import stats as scipy_stats # 'branchLength' ve 'angles' analizleri i
 from scipy.spatial import ConvexHull # 'angles' analizi için
 import os
 
-app = Flask(__name__, static_folder='public', static_url_path='/')
-CORS(app)
+# --- Global Yapılandırma: Dosya Yolları ---
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(BACKEND_DIR) # Proje kök dizini (safak/)
 
-# Statik dosya servisi
+# 'public' klasörünün doğru yolunu tanımlayın
+# Bu yol, proje kök dizininin (PROJECT_ROOT) altındaki 'public' klasörüdür.
+STATIC_FOLDER_PATH = os.path.join(PROJECT_ROOT, 'public')
+
+# Flask uygulamasını doğru static_folder yoluyla başlatın
+app = Flask(__name__, static_folder=STATIC_FOLDER_PATH, static_url_path='/')
+CORS(app) # CORS ayarınız varsa devam etsin
+
+# Statik dosya servisi (index.html ve diğer frontend varlıkları için)
 @app.route('/', methods=['GET'])
 def serve_index():
+    # app.static_folder artık PROJECT_ROOT/public'i işaret ediyor
     return send_from_directory(app.static_folder, 'index.html')
 
 @app.route('/<path:path>', methods=['GET'])
 def serve_static(path):
+    # Bu route, /images/original/002.jpg gibi istekleri
+    # PROJECT_ROOT/public/images/original/002.jpg gibi dosyalara yönlendirir.
     try:
         return send_from_directory(app.static_folder, path)
-    except:
-        return send_from_directory(app.static_folder, 'index.html')
-# --- Global Yapılandırma: Dosya Yolları ---
+    except FileNotFoundError: # Veya werkzeug.exceptions.NotFound
+        # Eğer SPA (Single Page Application) kullanıyorsanız ve path bir dosya değilse,
+        # React Router'ın devralması için index.html'e fallback yapabilirsiniz.
+        # Eğer doğrudan dosya bulunamadıysa 404 dönmesi daha doğru olabilir.
+        # Bu kısmı projenizin ihtiyacına göre düzenleyin.
+        # Eğer path /api/ ile başlamıyorsa ve dosya değilse index.html'e yönlendirme
+        if not path.startswith('api/') and '.' not in path: # Basit bir kontrol
+             app.logger.warn(f"Static file {path} not found, serving index.html as fallback for SPA.")
+             return send_from_directory(app.static_folder, 'index.html')
+        app.logger.error(f"Static file {path} not found.")
+        return jsonify({"error": "File not found"}), 404
+
+
+# --- Dosya Yolları (Bu kısımlarınız zaten doğru görünüyordu) ---
 # Mask klasör yollarını güncelle
-BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# 2. proje kökü = bir seviye yukarı
-PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
-
-# 3. göreli yollar
-ORIGINAL_IMAGES_PATH = os.path.join(PROJECT_ROOT, 'public', 'images', 'original')
-CELL_MASKS_PATH     = os.path.join(PROJECT_ROOT, 'public', 'images', 'masks', 'cell')
-BRANCH_MASKS_PATH   = os.path.join(PROJECT_ROOT, 'public', 'images', 'masks', 'branch')
+ORIGINAL_IMAGES_PATH = os.path.join(PROJECT_ROOT, 'public', 'images', 'original') # safak/public/images/original
+CELL_MASKS_PATH     = os.path.join(PROJECT_ROOT, 'public', 'images', 'masks', 'cell') # safak/public/images/masks/cell
+BRANCH_MASKS_PATH   = os.path.join(PROJECT_ROOT, 'public', 'images', 'masks', 'branch') # safak/public/images/masks/branch
 
 # modeller backend içinde
-CELL_MODEL_PATH     = os.path.join(BACKEND_DIR, 'best_cell_model.hdf5')
-BEST_MODEL_PATH     = os.path.join(BACKEND_DIR, 'best_model.hdf5')
-BRANCH_MODEL_PATH   = os.path.join(BACKEND_DIR, 'best_branch_model.hdf5')
+CELL_MODEL_PATH     = os.path.join(BACKEND_DIR, 'best_cell_model.hdf5') # safak/backend/best_cell_model.hdf5
+BEST_MODEL_PATH     = os.path.join(BACKEND_DIR, 'best_model.hdf5') # safak/backend/best_model.hdf5
+BRANCH_MODEL_PATH   = os.path.join(BACKEND_DIR, 'best_branch_model.hdf5') # safak/backend/best_branch_model.hdf5
 
 # --- Yardımcı Fonksiyonlar: Keras Modelleri için Metrikler ---
 def dice_coef(y_true, y_pred):
