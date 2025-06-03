@@ -1,0 +1,4 @@
+/* Branch görselleştirmesi için özel stiller */
+.branch-visualization img {
+    mix-blend-mode: normal;
+}

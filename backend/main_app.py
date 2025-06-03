@@ -10,7 +10,435 @@ from matplotlib.colors import hsv_to_rgb # Renk üretimi ve 'angles' analizi iç
 from scipy import stats as scipy_stats # 'branchLength' ve 'angles' analizleri için
 from scipy.spatial import ConvexHull # 'angles' analizi için
 import os
+import cv2
+import numpy as np
+from scipy.spatial.distance import cdist
+from skimage.morphology import skeletonize
+from skimage.measure import regionprops, label
+import networkx as nx
+import math as math
+def boxcount(Z, k):
+                    S = np.add.reduceat(
+                            np.add.reduceat(Z, np.arange(0, Z.shape[0], k), axis=0),
+                            np.arange(0, Z.shape[1], k), axis=1)
+                    return np.count_nonzero(S)
 
+def compute_fractal_dimension(Z):
+                    """
+                    Box-counting algorithm to approximate the fractal dimension of a 2D binary image Z.
+                    """
+                    assert len(Z.shape) == 2, "Input image must be 2D"
+                    Z = (Z > 0)
+                    p = min(Z.shape)
+                    n = 2**np.floor(np.log2(p))
+                    sizes = 2**np.arange(np.floor(np.log2(n)), 1, -1)
+                    counts = []
+                    for size in sizes:
+                        counts.append(boxcount(Z, int(size)))
+                    coeffs = np.polyfit(np.log(sizes), np.log(counts), 1)
+                    return -coeffs[0]
+
+def build_skeleton_graph(skeleton):
+                    """
+                    Build a graph from a binary skeleton image using 8-connected neighbors.
+                    """
+                    G = nx.Graph()
+                    h, w = skeleton.shape
+                    indices = np.argwhere(skeleton > 0)
+                    for y, x in indices:
+                        G.add_node((x, y))
+                    for y, x in indices:
+                        for dy in [-1, 0, 1]:
+                            for dx in [-1, 0, 1]:
+                                if dx == 0 and dy == 0:
+                                    continue
+                                nx_, ny_ = x + dx, y + dy
+                                if 0 <= ny_ < h and 0 <= nx_ < w and skeleton[ny_, nx_]:
+                                    G.add_edge((x, y), (nx_, ny_))
+                    return G
+
+def compute_max_branch_order(skeleton):
+                    """
+                    Maximum branch order is approximated from the skeleton graph:
+                    For each node with degree >2, we consider (degree - 2) as local branch order.
+                    Returns the maximum such value.
+                    """
+                    G = build_skeleton_graph(skeleton)
+                    max_order = 0
+                    for node in G.nodes():
+                        d = G.degree[node]
+                        if d > 2:
+                            max_order = max(max_order, d - 2)
+                    return max_order
+
+def compute_average_node_degree(skeleton):
+                    """
+                    Returns the average node degree over the skeleton graph.
+                    """
+                    G = build_skeleton_graph(skeleton)
+                    if len(G.nodes()) == 0:
+                        return 0.0
+                    degrees = [d for n, d in G.degree()]
+                    return float(np.mean(degrees))
+
+def compute_convex_hull_compactness(skeleton):
+                    """
+                    Calculates compactness = (4π * area) / (perimeter^2)
+                    where the convex hull is computed on the skeleton points.
+                    """
+                    points = np.column_stack(np.where(skeleton > 0))
+                    if points.shape[0] < 3:
+                        return 0.0
+                    # Swap order from (row, col) to (x, y)
+                    points = points[:, ::-1]
+                    hull = ConvexHull(points)
+                    area = hull.volume     # In 2D, volume is the area.
+                    perimeter = hull.area  # In 2D, area is the perimeter.
+                    if perimeter == 0:
+                        return 0.0
+                    return (4 * math.pi * area) / (perimeter ** 2)
+def detect_cell_centers(cell_mask, min_area=50):
+    """
+    Hücre merkezlerini tespit eder
+    """
+    # Connected components ile hücreleri ayır
+    num_labels, labels = cv2.connectedComponents(cell_mask.astype(np.uint8))
+    cell_centers = []
+    
+    for i in range(1, num_labels):  # 0 arka plan
+        component_mask = (labels == i).astype(np.uint8)
+        area = np.sum(component_mask)
+        
+        if area > min_area:
+            # Merkez hesapla
+            moments = cv2.moments(component_mask)
+            if moments['m00'] != 0:
+                cx = int(moments['m10'] / moments['m00'])
+                cy = int(moments['m01'] / moments['m00'])
+                cell_centers.append((cx, cy))
+    
+    return cell_centers
+
+def find_skeleton_endpoints_and_junctions(skeleton):
+    """
+    Skeleton üzerindeki uç noktaları ve kavşak noktalarını bulur
+    """
+    # 3x3 kernel ile komşu sayısını hesapla
+    kernel = np.array([[1, 1, 1],
+                       [1, 10, 1],
+                       [1, 1, 1]], dtype=np.uint8)
+    
+    # Skeleton noktalarında komşu sayısını hesapla
+    neighbor_count = cv2.filter2D(skeleton.astype(np.uint8), -1, kernel)
+    neighbor_count = neighbor_count * (skeleton > 0)
+    
+    # Uç noktalar: tam 1 komşu (10 + 1 = 11)
+    endpoints = np.where(neighbor_count == 11)
+    endpoints = list(zip(endpoints[1], endpoints[0]))  # (x, y) format
+    
+    # Kavşak noktaları: 3 veya daha fazla komşu (10 + 3+ = 13+)
+    junctions = np.where(neighbor_count >= 13)
+    junctions = list(zip(junctions[1], junctions[0]))  # (x, y) format
+    
+    return endpoints, junctions
+
+def trace_branch_from_point(skeleton, start_point, visited, max_length=1000):
+    """
+    Belirli bir noktadan başlayarak branch'i takip eder
+    """
+    path = [start_point]
+    current = start_point
+    visited.add(current)
+    
+    # 8-bağlantı için komşuluk
+    directions = [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]
+    
+    while len(path) < max_length:
+        found_next = False
+        
+        # Mevcut noktanın komşularını kontrol et
+        for dx, dy in directions:
+            next_x, next_y = current[0] + dx, current[1] + dy
+            
+            # Sınırları kontrol et
+            if (0 <= next_x < skeleton.shape[1] and 
+                0 <= next_y < skeleton.shape[0] and
+                skeleton[next_y, next_x] > 0 and
+                (next_x, next_y) not in visited):
+                
+                # Komşu sayısını kontrol et (kavşak kontrolü)
+                neighbor_count = 0
+                for dx2, dy2 in directions:
+                    nx, ny = next_x + dx2, next_y + dy2
+                    if (0 <= nx < skeleton.shape[1] and 
+                        0 <= ny < skeleton.shape[0] and
+                        skeleton[ny, nx] > 0):
+                        neighbor_count += 1
+                
+                # Eğer kavşak noktasıysa (3+ komşu) ve path başlangıcı değilse dur
+                if neighbor_count >= 3 and len(path) > 1:
+                    path.append((next_x, next_y))
+                    return path
+                
+                current = (next_x, next_y)
+                path.append(current)
+                visited.add(current)
+                found_next = True
+                break
+        
+        if not found_next:
+            break
+    
+    return path
+
+def assign_branches_to_cells(branches, cell_centers, max_distance=30):
+    """
+    Branch'leri en yakın hücrelere atar
+    """
+    if not cell_centers or not branches:
+        return []
+    
+    cell_centers_array = np.array(cell_centers)
+    branch_assignments = []
+    
+    for i, branch in enumerate(branches):
+        if len(branch) < 2:
+            continue
+            
+        start_point = np.array(branch[0])
+        
+        # En yakın hücre merkezini bul
+        distances = cdist([start_point], cell_centers_array)[0]
+        closest_cell_idx = np.argmin(distances)
+        closest_distance = float(distances[closest_cell_idx])  # Convert to native Python float
+        
+        # Eğer yeterince yakınsa ata
+        if closest_distance <= max_distance:
+            branch_assignments.append({
+                'branch_id': int(i + 1),  # Convert to native Python int
+                'branch_path': [(int(x), int(y)) for x, y in branch],  # Convert coordinates to native Python ints
+                'start_cell': int(closest_cell_idx),  # Convert to native Python int
+                'start_point': (int(branch[0][0]), int(branch[0][1])),  # Convert to native Python ints
+                'end_point': (int(branch[-1][0]), int(branch[-1][1])),  # Convert to native Python ints
+                'length': float(calculate_branch_length(branch)),  # Convert to native Python float
+                'distance_to_cell': float(closest_distance)  # Convert to native Python float
+            })
+    
+    return branch_assignments
+
+def calculate_branch_length(branch_path):
+    """
+    Branch uzunluğunu hesaplar
+    """
+    if len(branch_path) < 2:
+        return 0
+    
+    total_length = 0
+    for i in range(len(branch_path) - 1):
+        p1 = np.array(branch_path[i])
+        p2 = np.array(branch_path[i + 1])
+        total_length += np.linalg.norm(p2 - p1)
+    
+    return total_length
+
+def separate_merged_branches(skeleton, cell_centers, min_branch_length=20):
+    """
+    Birleşen branch'leri ayırır ve hücre merkezlerine atar
+    """
+    # Uç noktaları ve kavşakları bul
+    endpoints, junctions = find_skeleton_endpoints_and_junctions(skeleton)
+    
+    # Ziyaret edilen noktaları takip et
+    visited = set()
+    all_branches = []
+    
+    # Önce uç noktalardan başla
+    for endpoint in endpoints:
+        if endpoint not in visited:
+            branch = trace_branch_from_point(skeleton, endpoint, visited)
+            if len(branch) >= min_branch_length:
+                all_branches.append(branch)
+    
+    # Sonra kavşak noktalarından başla
+    for junction in junctions:
+        if junction not in visited:
+            # Kavşak noktasından her yöne branch trace et
+            directions = [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]
+            for dx, dy in directions:
+                start_point = (junction[0] + dx, junction[1] + dy)
+                if (0 <= start_point[0] < skeleton.shape[1] and 
+                    0 <= start_point[1] < skeleton.shape[0] and
+                    skeleton[start_point[1], start_point[0]] > 0 and
+                    start_point not in visited):
+                    
+                    branch = trace_branch_from_point(skeleton, start_point, visited)
+                    if len(branch) >= min_branch_length:
+                        all_branches.append(branch)
+    
+    # Branch'leri hücrelere ata
+    branch_assignments = assign_branches_to_cells(all_branches, cell_centers)
+    
+    return branch_assignments
+
+def visualize_improved_branches(original_img, branch_assignments, cell_centers, mask_branches=None):
+    """
+    Geliştirilmiş branch görselleştirmesi:
+    - Sadece model çıktısı branchler: Kırmızı (kalın)
+    - Sadece maskeden gelen branchler: Mavi (ince)
+    - Üst üste binen branchler: Yeşil (orta kalınlık)
+    """
+    overlay_img = original_img.copy()
+    
+    # Önce hücre merkezlerini çiz (sarı daireler)
+    for i, (cx, cy) in enumerate(cell_centers):
+        cv2.circle(overlay_img, (cx, cy), 30 , (255, 0, 0), -1)  # Sarı dolu daire
+        cv2.putText(overlay_img, f"C{i+1}", (cx-10, cy-25), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255,255,255), 4)
+ 
+    
+    # Model branch'lerinin mask'ini oluştur
+    h, w = original_img.shape[:2]
+    model_mask = np.zeros((h, w), dtype=np.uint8)
+    
+    # Model branch'lerini mask'e çiz
+    for assignment in branch_assignments:
+        branch_path = assignment['branch_path']
+        if len(branch_path) > 1:
+            for i in range(len(branch_path) - 1):
+                cv2.line(model_mask, branch_path[i], branch_path[i+1], 1, 8)
+    
+    # Maske branch'lerinin mask'ini oluştur
+    mask_mask = np.zeros((h, w), dtype=np.uint8)
+    
+    if mask_branches is not None:
+        for branch_path in mask_branches:
+            if len(branch_path) > 1:
+                for i in range(len(branch_path) - 1):
+                    cv2.line(mask_mask, branch_path[i], branch_path[i+1], 1, 3)
+    
+    # Kesişim mask'ini oluştur
+    intersection_mask = cv2.bitwise_and(model_mask, mask_mask)
+    
+    # Sadece model ve sadece mask alanlarını bul
+    only_model_mask = cv2.bitwise_and(model_mask, cv2.bitwise_not(intersection_mask))
+    only_mask_mask = cv2.bitwise_and(mask_mask, cv2.bitwise_not(intersection_mask))
+    
+    # Renkleri uygula
+    overlay_img[only_model_mask > 0] = (0, 0, 255)    # Kırmızı (sadece model)
+    #overlay_img[only_mask_mask > 0] = (255, 0, 0)     # Mavi (sadece mask)
+    overlay_img[intersection_mask > 0] = (0, 255, 0)   # Yeşil (kesişim)
+    
+    total_branches = 0  # Toplam branch sayısını takip et
+    
+    # Branch numaralarını yaz (model çıktıları için)
+    for assignment in branch_assignments:
+        total_branches += 1
+        branch_path = assignment['branch_path']
+        start_point = assignment['start_point']
+        end_point = assignment['end_point']
+        
+        # Branch numarasını ortaya yaz
+        mid_point = (
+            (start_point[0] + end_point[0]) // 2,
+            (start_point[1] + end_point[1]) // 2
+        )
+        # Beyaz arka planlı metin
+        # cv2.putText(overlay_img, f"B{total_branches}", mid_point, 
+        #            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 3)
+        # cv2.putText(overlay_img, f"B{total_branches}", mid_point, 
+        #            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 1)
+    
+    # Maskeden gelen branch'ler için numara vermeye devam et
+    if mask_branches is not None:
+        for branch_path in mask_branches:
+            if len(branch_path) > 1:
+                total_branches += 1
+                # Branch numarasını ortaya yaz
+                mid_point = (
+                    (branch_path[0][0] + branch_path[-1][0]) // 2,
+                    (branch_path[0][1] + branch_path[-1][1]) // 2
+                )
+                # # Beyaz arka planlı metin
+                # cv2.putText(overlay_img, f"B{total_branches}", mid_point, 
+                #            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,0), 3)
+                # cv2.putText(overlay_img, f"B{total_branches}", mid_point, 
+                #            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 1)
+    
+    return overlay_img
+
+# ANA FONKSİYON - Mevcut kodunuzun 'branch' kısmına entegre edilecek
+def improved_branch_analysis(original_img, img_gray_resized_norm, mask_resized_binary, 
+                           branch_seg_model, common_best_model, threshold_param):
+    """
+    Geliştirilmiş branch analizi
+    """
+    # 1. Skeleton oluştur (mevcut fonksiyonunuzu kullan)
+    skeleton_256 = _get_branch_segmentation_skeleton(
+        img_gray_resized_norm, mask_resized_binary, 
+        branch_seg_model, common_best_model, threshold_param
+    )
+    
+    # 2. Hücre merkezlerini tespit et
+    # Not: Burada cell mask'i de kullanmanız gerekebilir
+    # Şimdilik branch mask'inden hücre merkezlerini tahmin ediyoruz
+    cell_centers_256 = detect_cell_centers(mask_resized_binary)
+    
+    # 3. Geliştirilmiş branch separation
+    branch_assignments = separate_merged_branches(skeleton_256, cell_centers_256)
+    
+    # 4. Koordinatları orijinal boyuta ölçekle
+    scale_x = original_img.shape[1] / 256.0
+    scale_y = original_img.shape[0] / 256.0
+    
+    # Ölçeklenmiş branch assignments
+    scaled_assignments = []
+    for assignment in branch_assignments:
+        scaled_path = [(int(x * scale_x), int(y * scale_y)) 
+                      for x, y in assignment['branch_path']]
+        scaled_assignment = assignment.copy()
+        scaled_assignment['branch_path'] = scaled_path
+        scaled_assignment['start_point'] = (int(assignment['start_point'][0] * scale_x), 
+                                          int(assignment['start_point'][1] * scale_y))
+        scaled_assignment['end_point'] = (int(assignment['end_point'][0] * scale_x), 
+                                        int(assignment['end_point'][1] * scale_y))
+        scaled_assignment['length'] = calculate_branch_length(scaled_path)
+        scaled_assignments.append(scaled_assignment)
+    
+    # Hücre merkezlerini de ölçekle
+    scaled_cell_centers = [(int(x * scale_x), int(y * scale_y)) 
+                          for x, y in cell_centers_256]
+    
+    # 5. Görselleştirme
+    overlay_img = visualize_improved_branches(original_img, scaled_assignments, scaled_cell_centers)
+    
+    # 6. İstatistikler
+    branch_lengths = [assignment['length'] for assignment in scaled_assignments]
+    
+    results = {
+        'totalBranches': len(scaled_assignments),
+        'cellsDetected': len(scaled_cell_centers),
+        'averageLength': np.mean(branch_lengths) if branch_lengths else 0,
+        'minLength': np.min(branch_lengths) if branch_lengths else 0,
+        'maxLength': np.max(branch_lengths) if branch_lengths else 0,
+        'stdLength': np.std(branch_lengths) if branch_lengths else 0,
+        'branchDetails': [
+            {
+                'id': assignment['branch_id'],
+                'length': assignment['length'],
+                'startCell': assignment['start_cell'],
+                'distanceToCell': assignment['distance_to_cell']
+            }
+            for assignment in scaled_assignments
+        ],
+        'histograms': {
+            'branchLength': {
+                'labels': [f"Branch {assignment['branch_id']}" for assignment in scaled_assignments],
+                'data': [round(assignment['length'], 2) for assignment in scaled_assignments]
+            }
+        }
+    }
+    
+    return overlay_img, results
 # --- Global Yapılandırma: Dosya Yolları ---
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BACKEND_DIR) # Proje kök dizini (safak/)
@@ -273,7 +701,7 @@ def process_image_route():
     # --- Analiz Türü: Hücre Segmentasyonu ve İstatistikleri ---
     if analysis_type == 'cell':
         try:
-            # Dinamik mask yolu oluştur
+            # Dinamik maske yolu oluştur
             mask_filename = f"{image_name.split('.')[0]}.png"  # örn: "040.jpg" -> "040.png"
             mask_path = os.path.join(CELL_MASKS_PATH, mask_filename)
             
@@ -405,7 +833,7 @@ def process_image_route():
     # --- Analiz Türü: Dal Görselleştirme ---
     elif analysis_type == 'branch':
         try:
-            # Dinamik mask yolu oluştur
+            # Dinamik maske yolu oluştur
             mask_filename = f"{image_name.split('.')[0]}.png"
             mask_path = os.path.join(BRANCH_MASKS_PATH, mask_filename)
             
@@ -424,50 +852,173 @@ def process_image_route():
             mask_resized = cv2.resize(mask_for_branch, (256, 256), interpolation=cv2.INTER_NEAREST)
             mask_resized_binary = (mask_resized > 127).astype(np.uint8)
 
+            # ===== YENİ GELİŞTİRİLMİŞ ALGORİTMA =====
+            # Cell mask'i de yükle (branch mask'i yerine cell mask kullanabilirsiniz)
+            cell_mask_filename = f"{image_name.split('.')[0]}.png"
+            cell_mask_path = os.path.join(CELL_MASKS_PATH, cell_mask_filename)
+            
+            cell_centers_256 = []
+            if os.path.exists(cell_mask_path):
+                cell_mask = cv2.imread(cell_mask_path, cv2.IMREAD_GRAYSCALE)
+                if cell_mask is not None:
+                    cell_mask_resized = cv2.resize(cell_mask, (256, 256), interpolation=cv2.INTER_NEAREST)
+                    cell_mask_binary = (cell_mask_resized > 127).astype(np.uint8)
+                    cell_centers_256 = detect_cell_centers(cell_mask_binary)
+            
+            # Eğer cell mask yoksa, branch mask'inden tahmin et
+            if not cell_centers_256:
+                cell_centers_256 = detect_cell_centers(mask_resized_binary)
+            
+            # Skeleton oluştur
             skeleton_256 = _get_branch_segmentation_skeleton(
                 img_gray_resized_norm, mask_resized_binary, 
                 branch_seg_model, common_best_model, threshold_param
             )
-            branches_256, _ = _trace_branches_from_skeleton_img(skeleton_256, filter_by_endpoints=True)
-
-            overlay_img = original_img.copy()
+            
+            # Geliştirilmiş branch detection
+            branch_assignments = separate_merged_branches(skeleton_256, cell_centers_256, min_branch_length=15)
+            
+            # Koordinatları orijinal boyuta ölçekle
             scale_x = original_img.shape[1] / 256.0
             scale_y = original_img.shape[0] / 256.0
-            branch_colors = generate_unique_bgr_colors(len(branches_256))
-            branch_lengths_pixels = []
-
-            for idx, branch_path_256 in enumerate(branches_256):
-                color_to_draw = branch_colors[idx % len(branch_colors)] if branch_colors else (0,0,255) # Renk yoksa kırmızı
-                points_orig_scale = [(int(x_coord * scale_x), int(y_coord * scale_y)) for x_coord, y_coord in branch_path_256]
-                
-                current_branch_length = 0.0
-                if len(points_orig_scale) > 1:
-                    for i in range(len(points_orig_scale) - 1):
-                        cv2.line(overlay_img, points_orig_scale[i], points_orig_scale[i+1], color_to_draw, 12) 
-                        current_branch_length += np.linalg.norm(np.array(points_orig_scale[i+1]) - np.array(points_orig_scale[i]))
-                if current_branch_length > 0:
-                    branch_lengths_pixels.append(current_branch_length)
             
-            stats_branch = calculate_basic_stats(branch_lengths_pixels)
-            hist_labels = [f"Dal {i+1}" for i in range(len(branch_lengths_pixels))]
-            hist_data = [round(length, 2) for length in branch_lengths_pixels]
-
+            # Mask'ten branch'leri çıkar
+            mask_orig = cv2.resize(mask_for_branch, (original_img.shape[1], original_img.shape[0]), 
+                             interpolation=cv2.INTER_NEAREST)
+            mask_bin = (mask_orig > 127).astype(np.uint8)
+            mask_skeleton = skeletonize(mask_bin).astype(np.uint8)
+            
+            # Mask'ten branch'leri tespit et
+            mask_branches = []
+            visited_mask = set()
+            h, w = mask_skeleton.shape
+            
+            def trace_mask_branch(x, y):
+                stack = [(x, y)]
+                branch = []
+                while stack:
+                    cx, cy = stack.pop()
+                    if (cx, cy) not in visited_mask:
+                        visited_mask.add((cx, cy))
+                        branch.append((cx, cy))
+                        for dx in [-1, 0, 1]:
+                            for dy in [-1, 0, 1]:
+                                nx, ny = cx + dx, cy + dy
+                                if (0 <= nx < w and 0 <= ny < h and 
+                                    mask_skeleton[ny, nx] and 
+                                    (nx, ny) not in visited_mask):
+                                    stack.append((nx, ny))
+                return branch
+            
+            # Maskeden branchleri bul
+            for y in range(h):
+                for x in range(w):
+                    if mask_skeleton[y, x] and (x, y) not in visited_mask:
+                        branch = trace_mask_branch(x, y)
+                        if len(branch) > 15:  # Min uzunluk kontrolü
+                            mask_branches.append(branch)
+            
+            # Branch assignments'ları ölçekle
+            scaled_assignments = []
+            for assignment in branch_assignments:
+                scaled_path = [(int(x * scale_x), int(y * scale_y)) 
+                            for x, y in assignment['branch_path']]
+                scaled_assignment = assignment.copy()
+                scaled_assignment['branch_path'] = scaled_path
+                scaled_assignment['start_point'] = (int(assignment['start_point'][0] * scale_x), 
+                                                int(assignment['start_point'][1] * scale_y))
+                scaled_assignment['end_point'] = (int(assignment['end_point'][0] * scale_x), 
+                                                int(assignment['end_point'][1] * scale_y))
+                scaled_assignment['length'] = calculate_branch_length(scaled_path)
+                scaled_assignments.append(scaled_assignment)
+            
+            # Hücre merkezlerini ölçekle
+            scaled_cell_centers = [(int(x * scale_x), int(y * scale_y)) 
+                                for x, y in cell_centers_256]
+            
+            # Görselleştirme
+            overlay_img = visualize_improved_branches(original_img, scaled_assignments, 
+                                                   scaled_cell_centers, mask_branches)
+            
+            # Detaylı branch bilgileri
+            branch_details = []
+            for idx, assignment in enumerate(scaled_assignments, start=1):  # 1'den başlayarak numaralandır
+        
+                branch_path = assignment['branch_path']
+                if len(branch_path) > 1:
+                        # Branch'i çiz
+                        for i in range(len(branch_path) - 1):
+                            cv2.line(overlay_img, branch_path[i], branch_path[i+1], (0, 0, 255), 2)
+                        
+                        # Sadece branch numarasını yaz
+                        mid_point = (
+                            (assignment['start_point'][0] + assignment['end_point'][0]) // 2,
+                            (assignment['start_point'][1] + assignment['end_point'][1]) // 2
+                        )
+                        
+                        # Beyaz arka planlı metin
+                        text = f"B{idx}"
+                        (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+                        
+                        # Arka plan dikdörtgeni
+                        cv2.rectangle(overlay_img, 
+                                    (mid_point[0] - text_width//2 - 5, mid_point[1] - text_height//2 - 5),
+                                    (mid_point[0] + text_width//2 + 5, mid_point[1] + text_height//2 + 5),
+                                    (255, 255, 255), -1)
+                        
+                        # Branch numarasını yaz
+                        cv2.putText(overlay_img, text, 
+                                    (mid_point[0] - text_width//2, mid_point[1] + text_height//2),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 5)       
+                branch_details.append({
+                    'branchId': idx,  # idx kullanarak 1'den başlat
+                    'length': round(assignment['length'], 2),
+                    'startCell': assignment.get('start_cell', -1),
+                    'startPoint': assignment['start_point'],
+                    'endPoint': assignment['end_point'],
+                    'distanceToCell': round(assignment.get('distance_to_cell', 0), 2)
+                })
+            
+            # Histogram verileri - branch numaralarını da 1'den başlat
+            hist_labels = [f"Branch {i+1}" for i in range(len(scaled_assignments))]  # 1'den başlayarak etiketler
+            hist_data = [round(assignment['length'], 2) for assignment in scaled_assignments]
+            
             results = {
-                'totalBranches': len(branch_lengths_pixels),
-                'averageLength': stats_branch['mean'],
-                'minLength': stats_branch['min'],
-                'maxLength': stats_branch['max'],
-                'stdLength': stats_branch['std'],
+                'totalBranches': len(scaled_assignments),
+                'cellsDetected': len(scaled_cell_centers),
+                'averageLength': round(np.mean(hist_data), 2) if hist_data else 0,
+                'minLength': round(np.min(hist_data), 2) if hist_data else 0,
+                'maxLength': round(np.max(hist_data), 2) if hist_data else 0,
+                'stdLength': round(np.std(hist_data), 2) if hist_data else 0,
+                'branchDetails': branch_details,
                 'histograms': { 
-                    'branchLength': { 'labels': hist_labels, 'data': hist_data }
+                    'branchLength': { 
+                        'labels': hist_labels, 
+                        'data': hist_data 
+                    }
                 }
             }
+            
+            # Mask ve model branch'lerini ayrı ayrı işle
+            mask_orig = cv2.resize(mask_for_branch, (original_img.shape[1], original_img.shape[0]), 
+                                 interpolation=cv2.INTER_NEAREST)
+            mask_bin = (mask_orig > 127).astype(np.uint8)
+            
+            # Model çıktısından gelen branch'ler için görselleştirme
+            overlay_img = visualize_improved_branches(original_img, scaled_assignments, 
+                                                   scaled_cell_centers, mask_branches)
+            
+            # Base64'e çevir
             encoded_image = encode_image_to_base64(overlay_img)
-            return jsonify({'processedImage': encoded_image, 'analysisResults': results})
+            
+            return jsonify({
+                'processedImage': encoded_image,
+                'analysisResults': results
+            })
+            
         except Exception as e:
             app.logger.error(f"'branch' analizi sırasında hata: {e}", exc_info=True)
             return jsonify({"error": f"'branch' analizi sırasında hata: {str(e)}"}), 500
-
     # --- Analiz Türü: Hücre Alan Analizi ---
     elif analysis_type == 'cellArea':
         try:
@@ -534,101 +1085,147 @@ def process_image_route():
     # --- Analiz Türü: Detaylı Dal Uzunluk Analizi ---
     elif analysis_type == 'branchLength':
         try:
-            # Dinamik mask yolu oluştur
+            # Dinamik maske yolu oluştur
             mask_filename = f"{image_name.split('.')[0]}.png"
             mask_path = os.path.join(BRANCH_MASKS_PATH, mask_filename)
             
             if not os.path.exists(mask_path):
                 return jsonify({"error": f"Maske bulunamadı: {mask_path}"}), 404
                 
-            # Maskeyi yükle
-            mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-            if mask is None:
+            mask_for_branch = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+            if mask_for_branch is None:
                 return jsonify({"error": f"Dal maskesi yüklenemedi: {mask_path}"}), 500
 
-            # Gri tonlamaya çevir ve normalize et
-            gray = cv2.cvtColor(original_img, cv2.COLOR_BGR2GRAY)
-            resized = cv2.resize(gray, (256, 256)).astype(np.float32) / 255.0
-            inp_tensor = resized[None, ..., None]
+            # Görüntü işleme
+            img_gray = cv2.cvtColor(original_img, cv2.COLOR_BGR2GRAY)
+            img_gray_resized = cv2.resize(img_gray, (256, 256))
+            img_gray_resized_norm = img_gray_resized.astype(np.float32) / 255.0
+            
+            mask_resized = cv2.resize(mask_for_branch, (256, 256), interpolation=cv2.INTER_NEAREST)
+            mask_resized_binary = (mask_resized > 127).astype(np.uint8)
 
-            # Tahminleri al
-            pred_branch = branch_seg_model.predict(inp_tensor)[0, ..., 0]
-            pred_best = common_best_model.predict(inp_tensor)[0, ..., 0]
+            # Cell merkezlerini tespit et
+            cell_mask_filename = f"{image_name.split('.')[0]}.png"
+            cell_mask_path = os.path.join(CELL_MASKS_PATH, cell_mask_filename)
+            
+            cell_centers_256 = []
+            if os.path.exists(cell_mask_path):
+                cell_mask = cv2.imread(cell_mask_path, cv2.IMREAD_GRAYSCALE)
+                if cell_mask is not None:
+                    cell_mask_resized = cv2.resize(cell_mask, (256, 256), interpolation=cv2.INTER_NEAREST)
+                    cell_mask_binary = (cell_mask_resized > 127).astype(np.uint8)
+                    cell_centers_256 = detect_cell_centers(cell_mask_binary)
 
-            # Maskeyi yeniden boyutlandır ve binary hale getir
-            mask_resized = cv2.resize(mask, (256, 256)) // 255
+            if not cell_centers_256:
+                cell_centers_256 = detect_cell_centers(mask_resized_binary)
 
-            # Tahminleri birleştir ve maskele
-            combined = cv2.bitwise_and(
-                (pred_branch > 0.5).astype(np.uint8),
-                (pred_best > 0.5).astype(np.uint8)
-            ) * mask_resized
+            # Skeleton oluştur
+            skeleton_256 = _get_branch_segmentation_skeleton(
+                img_gray_resized_norm, mask_resized_binary, 
+                branch_seg_model, common_best_model, threshold_param
+            )
+            
+            # Branch'leri tespit et
+            branch_assignments = separate_merged_branches(skeleton_256, cell_centers_256)
+            
+            # Koordinatları ölçekle
+            scale_x = original_img.shape[1] / 256.0
+            scale_y = original_img.shape[0] / 256.0
+            
+            # Ölçeklenmiş branch assignments
+            scaled_assignments = []
+            for assignment in branch_assignments:
+                scaled_path = [(int(x * scale_x), int(y * scale_y)) 
+                            for x, y in assignment['branch_path']]
+                scaled_assignment = assignment.copy()
+                scaled_assignment['branch_path'] = scaled_path
+                scaled_assignment['start_point'] = (int(assignment['start_point'][0] * scale_x), 
+                                                int(assignment['start_point'][1] * scale_y))
+                scaled_assignment['end_point'] = (int(assignment['end_point'][0] * scale_x), 
+                                            int(assignment['end_point'][1] * scale_y))
+                scaled_assignment['length'] = calculate_branch_length(scaled_path)
+                scaled_assignments.append(scaled_assignment)
 
-            # Skeletonize işlemi
-            _, bw = cv2.threshold((combined * 255).astype(np.uint8), threshold_param, 255, cv2.THRESH_BINARY)
-            skel = skeletonize(bw // 255).astype(np.uint8)
+            # Hücre merkezlerini ölçekle
+            scaled_cell_centers = [(int(x * scale_x), int(y * scale_y)) 
+                                for x, y in cell_centers_256]
 
-            # Branch tespiti için DFS
-            branches = []
-            visited = set()
-            h, w = skel.shape
-
-            def dfs(x, y):
+            # Mask'ten branch'leri tespit et
+            mask_orig = cv2.resize(mask_for_branch, (original_img.shape[1], original_img.shape[0]), 
+                                interpolation=cv2.INTER_NEAREST)
+            mask_bin = (mask_orig > 127).astype(np.uint8)
+            mask_skeleton = skeletonize(mask_bin).astype(np.uint8)
+            
+            # Mask branch'lerini bul
+            mask_branches = []
+            visited_mask = set()
+            h, w = mask_skeleton.shape
+            
+            def trace_mask_branch(x, y):
                 stack = [(x, y)]
                 branch = []
                 while stack:
                     cx, cy = stack.pop()
-                    if (cx, cy) not in visited:
-                        visited.add((cx, cy))
+                    if (cx, cy) not in visited_mask:
+                        visited_mask.add((cx, cy))
                         branch.append((cx, cy))
                         for dx in [-1, 0, 1]:
                             for dy in [-1, 0, 1]:
                                 nx, ny = cx + dx, cy + dy
-                                if 0 <= nx < w and 0 <= ny < h and skel[ny, nx]:
+                                if (0 <= nx < w and 0 <= ny < h and 
+                                    mask_skeleton[ny, nx] and 
+                                    (nx, ny) not in visited_mask):
                                     stack.append((nx, ny))
                 return branch
-
-            # Dalları bul
+            
             for y in range(h):
                 for x in range(w):
-                    if skel[y, x] and (x, y) not in visited:
-                        b = dfs(x, y)
-                        if len(b) > 1:
-                            branches.append(b)
+                    if mask_skeleton[y, x] and (x, y) not in visited_mask:
+                        branch = trace_mask_branch(x, y)
+                        if len(branch) > 15:
+                            mask_branches.append(branch)
 
-            # Görselleştirme ve uzunluk hesaplama
-            overlay = original_img.copy()
-            lengths = []
-            scale_x = original_img.shape[1] / 256
-            scale_y = original_img.shape[0] / 256
+            # Branch görselleştirmesi
+            overlay_img = visualize_improved_branches(original_img, scaled_assignments, 
+                                                scaled_cell_centers, mask_branches)
 
-            for branch in branches:
-                pts = [(int(x*scale_x), int(y*scale_y)) for x, y in branch]
-                
-                # Branch çizgileri
-                for i in range(len(pts)-1):
-                    cv2.line(overlay, pts[i], pts[i+1], (0,0,255), 5)
-                
-                # Uzunluk hesapla
-                length = sum(np.linalg.norm(np.array(pts[i])-np.array(pts[i-1])) 
-                        for i in range(1, len(pts)))
-                lengths.append(length)
+            # Model branch'lerinin uzunluklarını hesapla
+            lengths = [assignment['length'] for assignment in scaled_assignments]
 
-                # Branch üzerine yazı
-                center = tuple(np.mean(pts, axis=0).astype(int))
-                text = f"{length:.1f}"
-                (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1, 3)
+            # Her branch için uzunluk bilgisini görüntü üzerine yaz
+            for idx, assignment in enumerate(scaled_assignments):
+                branch_path = assignment['branch_path']
+                length = assignment['length']
                 
+                # Branch'in orta noktasını bul
+                mid_point = (
+                    (assignment['start_point'][0] + assignment['end_point'][0]) // 2,
+                    (assignment['start_point'][1] + assignment['end_point'][1]) // 2
+                )
+                
+                # Uzunluk etiketini yaz
+                text = f"B{idx+1}: {length:.1f}"
+                font_scale = 1.1
+                font_thickness = 2
+
+                # Yazı boyutunu al
+                (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_thickness)
+
                 # Arka plan dikdörtgeni
-                cv2.rectangle(overlay, 
-                            (center[0] - text_width//2 - 5, center[1] - text_height//2 - 5),
-                            (center[0] + text_width//2 + 5, center[1] + text_height//2 + 5),
+                cv2.rectangle(overlay_img, 
+                            (mid_point[0] - text_width // 2 - 10, mid_point[1] - text_height // 2 - 10),
+                            (mid_point[0] + text_width // 2 + 10, mid_point[1] + text_height // 2 + 10),
                             (255, 255, 255), -1)
+
+                # Yazıyı çiz (bunu da büyütmelisin, örnek olarak ekliyorum)
+                cv2.putText(overlay_img, text, 
+                            (mid_point[0] - text_width // 2, mid_point[1] + text_height // 2), 
+                            cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 0), font_thickness)
                 
-                # Yazı
-                cv2.putText(overlay, text, 
-                        (center[0] - text_width//2, center[1] + text_height//2), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 3)
+                # # Metni yaz
+                # cv2.putText(overlay_img, text, 
+                #         (mid_point[0] - text_width//2, mid_point[1] + text_height//2),
+                #         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
 
             # İstatistikleri hesapla
             def calculate_advanced_stats(lengths):
@@ -663,17 +1260,25 @@ def process_image_route():
             }
 
             # Histogram verisi
-            hist_bins = np.arange(0, 5000 + 100, 100)
+            hist_bins = np.arange(0, max(lengths) + 100, 100) if lengths else np.arange(0, 100, 100)
             hist_values, _ = np.histogram(lengths, bins=hist_bins)
-            hist_labels = [f"{hist_bins[i]}-{hist_bins[i+1]}" for i in range(len(hist_bins)-1)]
+            hist_labels = [f"{int(hist_bins[i])}-{int(hist_bins[i+1])}" for i in range(len(hist_bins)-1)]
 
-            # Sonuçları döndür
-            encoded_image = encode_image_to_base64(overlay)
+            encoded_image = encode_image_to_base64(overlay_img)
             return jsonify({
                 'processedImage': encoded_image,
                 'analysisResults': {
                     **basic_stats,
                     **advanced_stats,
+                    'branchDetails': [
+                        {
+                            'id': idx + 1,
+                            'length': float(length),
+                            'startPoint': assignment['start_point'],
+                            'endPoint': assignment['end_point']
+                        }
+                        for idx, (length, assignment) in enumerate(zip(lengths, scaled_assignments))
+                    ],
                     'histograms': {
                         'branchLength': {
                             'labels': hist_labels,
@@ -682,137 +1287,276 @@ def process_image_route():
                     }
                 }
             })
+
         except Exception as e:
             app.logger.error(f"'branchLength' analizi sırasında hata: {e}", exc_info=True)
             return jsonify({"error": f"'branchLength' analizi sırasında hata: {str(e)}"}), 500
-
-    # --- Analiz Türü: Dal Açıları Analizi ---
     elif analysis_type == 'angles':
         try:
-            # Dinamik mask yolu oluştur
+            # Branch analizinden gelen tüm işlemleri aynen alıyoruz
             mask_filename = f"{image_name.split('.')[0]}.png"
             mask_path = os.path.join(BRANCH_MASKS_PATH, mask_filename)
             
             if not os.path.exists(mask_path):
                 return jsonify({"error": f"Maske bulunamadı: {mask_path}"}), 404
                 
-            mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
-            if mask is None:
+            mask_for_branch = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+            if mask_for_branch is None:
                 return jsonify({"error": f"Dal maskesi yüklenemedi: {mask_path}"}), 500
 
-        # Görüntü işleme
-            gray = cv2.cvtColor(original_img, cv2.COLOR_BGR2GRAY)
-            inp = cv2.resize(gray, (256, 256)).astype(np.float32) / 255.0
-            inp_tensor = inp[None, ..., None]
+            img_gray = cv2.cvtColor(original_img, cv2.COLOR_BGR2GRAY)
+            img_gray_resized = cv2.resize(img_gray, (256, 256))
+            img_gray_resized_norm = img_gray_resized.astype(np.float32) / 255.0
+            
+            mask_resized = cv2.resize(mask_for_branch, (256, 256), interpolation=cv2.INTER_NEAREST)
+            mask_resized_binary = (mask_resized > 127).astype(np.uint8)
 
-            # Model tahminleri
-            pred_branch = branch_seg_model.predict(inp_tensor)[0, ..., 0]
-            pred_best = common_best_model.predict(inp_tensor)[0, ..., 0]
+            # Cell merkezlerini tespit et
+            cell_mask_filename = f"{image_name.split('.')[0]}.png"
+            cell_mask_path = os.path.join(CELL_MASKS_PATH, cell_mask_filename)
+            
+            cell_centers_256 = []
+            if os.path.exists(cell_mask_path):
+                cell_mask = cv2.imread(cell_mask_path, cv2.IMREAD_GRAYSCALE)
+                if cell_mask is not None:
+                    cell_mask_resized = cv2.resize(cell_mask, (256, 256), interpolation=cv2.INTER_NEAREST)
+                    cell_mask_binary = (cell_mask_resized > 127).astype(np.uint8)
+                    cell_centers_256 = detect_cell_centers(cell_mask_binary)
 
-            # Binary işlemler
-            bin_branch = (pred_branch > 0.5).astype(np.uint8)
-            bin_best = (pred_best > 0.5).astype(np.uint8)
-            combined = cv2.bitwise_and(bin_branch, bin_best)
+            if not cell_centers_256:
+                cell_centers_256 = detect_cell_centers(mask_resized_binary)
 
-            mask_resized = cv2.resize(mask, (256, 256), interpolation=cv2.INTER_NEAREST) // 255
-            filtered = combined * mask_resized
+            # Skeleton oluştur ve branch'leri tespit et
+            skeleton_256 = _get_branch_segmentation_skeleton(
+                img_gray_resized_norm, mask_resized_binary, 
+                branch_seg_model, common_best_model, threshold_param
+            )
+            
+            branch_assignments = separate_merged_branches(skeleton_256, cell_centers_256)
+            
+            # Ölçekleme faktörleri
+            scale_x = original_img.shape[1] / 256.0
+            scale_y = original_img.shape[0] / 256.0
+            
+            # Model branch'lerini ölçekle
+            scaled_assignments = []
+            for assignment in branch_assignments:
+                scaled_path = [(int(x * scale_x), int(y * scale_y)) 
+                            for x, y in assignment['branch_path']]
+                scaled_assignment = assignment.copy()
+                scaled_assignment['branch_path'] = scaled_path
+                scaled_assignment['start_point'] = (int(assignment['start_point'][0] * scale_x), 
+                                                    int(assignment['start_point'][1] * scale_y))
+                scaled_assignment['end_point'] = (int(assignment['end_point'][0] * scale_x), 
+                                                int(assignment['end_point'][1] * scale_y))
+                scaled_assignment['length'] = calculate_branch_length(scaled_path)
+                scaled_assignments.append(scaled_assignment)
 
-            _, bw = cv2.threshold((filtered * 255).astype(np.uint8), threshold_param, 255, cv2.THRESH_BINARY)
-            skel = skeletonize(bw // 255).astype(np.uint8)
-
-            # Uç noktaları ve dalları bul
-            endpoints = []
-            h, w = skel.shape
-            for y in range(1, h - 1):
-                for x in range(1, w - 1):
-                    if skel[y, x]:
-                        neigh = skel[y-1:y+2, x-1:x+2]
-                        if np.sum(neigh) == 2:
-                            endpoints.append((x, y))
-
-            visited = set()
-            branches = []
-
-            def dfs(x, y):
+            # Mask'ten branch'leri tespit et
+            mask_orig = cv2.resize(mask_for_branch, (original_img.shape[1], original_img.shape[0]), 
+                                interpolation=cv2.INTER_NEAREST)
+            mask_bin = (mask_orig > 127).astype(np.uint8)
+            mask_skeleton = skeletonize(mask_bin).astype(np.uint8)
+            
+            # Mask branch'lerini bul
+            mask_branches = []
+            visited_mask = set()
+            h, w = mask_skeleton.shape
+            
+            def trace_mask_branch(x, y):
                 stack = [(x, y)]
                 branch = []
                 while stack:
                     cx, cy = stack.pop()
-                    if (cx, cy) not in visited:
-                        visited.add((cx, cy))
+                    if (cx, cy) not in visited_mask:
+                        visited_mask.add((cx, cy))
                         branch.append((cx, cy))
-                        for nx in range(cx-1, cx+2):
-                            for ny in range(cy-1, cy+2):
-                                if 0 <= nx < w and 0 <= ny < h and skel[ny, nx]:
+                        for dx in [-1, 0, 1]:
+                            for dy in [-1, 0, 1]:
+                                nx, ny = cx + dx, cy + dy
+                                if (0 <= nx < w and 0 <= ny < h and 
+                                    mask_skeleton[ny, nx] and 
+                                    (nx, ny) not in visited_mask):
                                     stack.append((nx, ny))
                 return branch
-
+            
             for y in range(h):
                 for x in range(w):
-                    if skel[y, x] and (x, y) not in visited:
-                        b = dfs(x, y)
-                        if len(b) > 1 and any(p in endpoints for p in b):
-                            branches.append(b)
+                    if mask_skeleton[y, x] and (x, y) not in visited_mask:
+                        branch = trace_mask_branch(x, y)
+                        if len(branch) > 15:
+                            mask_branches.append(branch)
 
-            # Görselleştirme ve açı hesaplama
-            overlay = original_img.copy()
-            scale_x = original_img.shape[1] / 256
-            scale_y = original_img.shape[0] / 256
+            # Önce branch'leri çiz
+            scaled_cell_centers = [(int(x * scale_x), int(y * scale_y)) for x, y in cell_centers_256]
+            overlay_img = visualize_improved_branches(original_img, scaled_assignments, 
+                                                    scaled_cell_centers, mask_branches)
+
+            # Kesişen branch'leri bul
+            h, w = original_img.shape[:2]
+            model_mask = np.zeros((h, w), dtype=np.uint8)
+            mask_mask = np.zeros((h, w), dtype=np.uint8)
+
+            for assignment in scaled_assignments:
+                branch_path = assignment['branch_path']
+                if len(branch_path) > 1:
+                    for i in range(len(branch_path) - 1):
+                        cv2.line(model_mask, branch_path[i], branch_path[i+1], 1, 8)
+
+            for branch_path in mask_branches:
+                if len(branch_path) > 1:
+                    for i in range(len(branch_path) - 1):
+                        cv2.line(mask_mask, branch_path[i], branch_path[i+1], 1, 3)
+
+            intersection_mask = cv2.bitwise_and(model_mask, mask_mask)
+
+            # Açıları hesapla ve çiz
             angles = []
+            for assignment in scaled_assignments:
+                branch_path = assignment['branch_path']
+                if len(branch_path) > 1:
+                    start_point = assignment['start_point']
+                    end_point = assignment['end_point']
+                    
+                    # Açı hesaplama
+                    dx = end_point[0] - start_point[0]
+                    dy = end_point[1] - start_point[1]
+                    angle = (math.degrees(math.atan2(-dy, dx)) + 360) % 360
+                    angles.append({
+                        'branchId': assignment.get('branch_id', -1),
+                        'startPoint': start_point,
+                        'endPoint': end_point,
+                        'angle': float(round(angle, 2)),
+                        'length': float(round(assignment['length'], 2))
+                    })
 
-            for branch in branches:
-                branch_endpoints = [p for p in branch if p in endpoints]
-                for i in range(len(branch_endpoints)):
-                    for j in range(i+1, len(branch_endpoints)):
-                        p1, p2 = branch_endpoints[i], branch_endpoints[j]
-                        p1r = (int(p1[0]*scale_x), int(p1[1]*scale_y))
-                        p2r = (int(p2[0]*scale_x), int(p2[1]*scale_y))
-                        dy = p2r[1] - p1r[1]
-                        dx = p2r[0] - p1r[0]
-                        angle = np.degrees(np.arctan2(dy, dx)) % 360
-                        dist = np.hypot(dx, dy)
-                        angles.append({
-                            'points': [p1r, p2r],
-                            'angle': float(round(angle,2)),
-                            'distance': float(round(dist,2))
-                        })
-                        
-                        color = tuple(int(c*255) for c in hsv_to_rgb([angle/360,1,1])[::-1])
-                        cv2.line(overlay, p1r, p2r, color, 2)
-                        text_pos = ((p1r[0]+p2r[0])//2, (p1r[1]+p2r[1])//2)
-                        cv2.putText(overlay, f"{round(angle,1)} deg", text_pos,
-                                  cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 3)
-                        cv2.putText(overlay, f"{round(angle,1)} deg", text_pos,
-                                  cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
+                    # Ok çizimi: 200px uzunluk, beyaz kontur + sarı iç
+                    dist = math.hypot(dx, dy)
+                    ux, uy = (dx/dist, dy/dist) if dist > 0 else (1.0, 0.0)
+                    arrow_length = 200
+                    arrow_end = (
+                        int(start_point[0] + ux * arrow_length),
+                        int(start_point[1] + uy * arrow_length)
+                    )
+                    # Kontur
+                    cv2.arrowedLine(overlay_img, start_point, arrow_end, (255,255,255), thickness=8, tipLength=0.3)
+                    # İç
+                    cv2.arrowedLine(overlay_img, start_point, arrow_end, (255,255,255), thickness=4, tipLength=0.3)
+                    
+                    # Açı etiketi
+                    mid_point = ((start_point[0] + arrow_end[0]) // 2, (start_point[1] + arrow_end[1]) // 2)
+                    text = f"{round(angle,1)}"
+                    font_scale, thickness = 1.2, 3
+                    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+                    pad = 10
+                    cv2.rectangle(overlay_img,
+                                  (mid_point[0]-tw//2-pad, mid_point[1]-th//2-pad),
+                                  (mid_point[0]+tw//2+pad, mid_point[1]+th//2+pad),
+                                  (255,255,255), -1)
+                    cv2.putText(overlay_img, text,
+                                (mid_point[0]-tw//2, mid_point[1]+th//2),
+                                cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0,0,0), thickness)
 
-            # İstatistikleri hesapla
-            values = [a['angle'] for a in angles]
+            # Açı hesaplama ve çizim işlemleri tamamlandıktan sonra:
+            angles = []
+            for assignment in scaled_assignments:
+                branch_path = assignment['branch_path']
+                if len(branch_path) > 1:
+                    start_point = assignment['start_point']
+                    end_point = assignment['end_point']
+                    
+                    # Açı hesaplama
+                    dx = end_point[0] - start_point[0]
+                    dy = end_point[1] - start_point[1]
+                    angle = (math.degrees(math.atan2(-dy, dx)) + 360) % 360
+                    angles.append({
+                        'branchId': assignment.get('branch_id', -1),
+                        'startPoint': start_point,
+                        'endPoint': end_point,
+                        'angle': float(round(angle, 2)),
+                        'length': float(round(assignment['length'], 2))
+                    })
+
+                    # Ok çizimi: 200px uzunluk, beyaz kontur + sarı iç
+                    dist = math.hypot(dx, dy)
+                    ux, uy = (dx/dist, dy/dist) if dist > 0 else (1.0, 0.0)
+                    arrow_length = 200
+                    arrow_end = (
+                        int(start_point[0] + ux * arrow_length),
+                        int(start_point[1] + uy * arrow_length)
+                    )
+                    # Kontur
+                    cv2.arrowedLine(overlay_img, start_point, arrow_end, (255,255,255), thickness=8, tipLength=0.3)
+                    # İç
+                    cv2.arrowedLine(overlay_img, start_point, arrow_end, (255,255,255), thickness=4, tipLength=0.3)
+                    
+                    # Açı etiketi
+                    mid_point = ((start_point[0] + arrow_end[0]) // 2, (start_point[1] + arrow_end[1]) // 2)
+                    text = f"{round(angle,1)}"
+                    font_scale, thickness = 1.2, 3
+                    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+                    pad = 10
+                    cv2.rectangle(overlay_img,
+                                  (mid_point[0]-tw//2-pad, mid_point[1]-th//2-pad),
+                                  (mid_point[0]+tw//2+pad, mid_point[1]+th//2+pad),
+                                  (255,255,255), -1)
+                    cv2.putText(overlay_img, text,
+                                (mid_point[0]-tw//2, mid_point[1]+th//2),
+                                cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0,0,0), thickness)
+
+            # Açıları hesapla
+            angle_values = [a['angle'] for a in angles]
+            if angle_values:
+
+                if angle_values and len(angle_values) > 0:
+                    angle_array =  np.array(angle_values) 
+                    avgAngle = float(angle_array.mean())
+                    minAngle = float(angle_array.min())
+                    maxAngle = float(angle_array.max())
+                    stdDevAngle = float(angle_array.std()) if len(angle_array) > 1 else 0.0
+                else:
+                    avgAngle = minAngle = maxAngle = stdDevAngle = 0.0
+                angleSkewness = float(scipy_stats.skew(angle_values)) if len(angle_values) > 1 else 0.0
+                angleKurtosis = float(scipy_stats.kurtosis(angle_values)) if len(angle_values) > 1 else 0.0
+
+                # Resultant vector length: Ortalama ünite vektörün normu
+                vectors = [(math.cos(math.radians(a)), math.sin(math.radians(a))) for a in angle_values]
+                sum_vector = np.sum(vectors, axis=0)
+                resultantVectorLength = float(np.linalg.norm(sum_vector) / len(angle_values))
+
+                # Angular entropy: 12 bin (0-360 arası, bin genişliği 30) kullanılarak hesaplanıyor
+                hist_counts, _ = np.histogram(angle_values, bins=np.arange(0, 361, 30))
+                p = hist_counts / np.sum(hist_counts) if np.sum(hist_counts) > 0 else np.zeros_like(hist_counts)
+                angularEntropy = -float(np.sum([p_val * np.log(p_val) for p_val in p if p_val > 0]))
+            else:
+                avgAngle = minAngle = maxAngle = stdDevAngle = angleSkewness = angleKurtosis = resultantVectorLength = angularEntropy = 0.0
+
             stats = {
-                'average': float(np.mean(values)) if values else 0.0,
-                'min': float(np.min(values)) if values else 0.0,
-                'max': float(np.max(values)) if values else 0.0,
-                'std': float(np.std(values)) if values else 0.0,
-                'resultantVectorLength': float(np.sqrt(
-                    np.sum(np.cos(np.radians(values)))**2 +
-                    np.sum(np.sin(np.radians(values)))**2
-                ) / len(values)) if values else 0.0,
-                'angleSkewness': float(scipy_stats.skew(values)) if len(values) > 2 else 0.0,
-                'angles': angles
-            }
-
-            # Histogram hesaplama
-            hist_bins = np.arange(0, 391, 30)  # 0, 30, 60, ..., 360
-            hist_values, _ = np.histogram(values, bins=hist_bins)
-            hist_labels = [f"{hist_bins[i]}-{hist_bins[i+1]}" for i in range(len(hist_bins)-1)]
-            
-            stats['histograms'] = {
-                'angles': {
-                    'labels': hist_labels,
-                    'data': hist_values.tolist()
+                'totalBranches': len(angles),
+                'averageAngle': avgAngle,
+                'minAngle': minAngle,
+                'maxAngle': maxAngle,
+                'stdDevAngle': stdDevAngle,
+                'angleSkewness': angleSkewness,
+                'angleKurtosis': angleKurtosis,
+                'resultantVectorLength': resultantVectorLength,
+                'angularEntropy': angularEntropy,
+                'fractalDimension': float(compute_fractal_dimension(skeleton_256)),
+                'maxBranchOrder': compute_max_branch_order(skeleton_256),
+                'nodeDegree': compute_average_node_degree(skeleton_256),
+                'nodeDegreeAverage': compute_average_node_degree(skeleton_256),
+                'convexHullCompactness': compute_convex_hull_compactness(skeleton_256),
+                #zort
+                'angleDetails': angles,
+                'histograms': {
+                    'angles': {
+                        'labels': [f"{i}-{i+30}" for i in range(0, 360, 30)],
+                        'data': np.histogram(angle_values, bins=np.arange(0, 361, 30))[0].tolist()
+                    }
                 }
             }
 
-            encoded_image = encode_image_to_base64(overlay)
+            encoded_image = encode_image_to_base64(overlay_img)
             return jsonify({
                 'processedImage': encoded_image,
                 'analysisResults': stats
@@ -821,9 +1565,6 @@ def process_image_route():
         except Exception as e:
             app.logger.error(f"'angles' analizi sırasında hata: {str(e)}", exc_info=True)
             return jsonify({"error": f"'angles' analizi sırasında hata: {str(e)}"}), 500
-            
-    else:
-        return jsonify({"error": f"Bilinmeyen veya uygulanmamış analiz türü: {analysis_type}"}), 400
 
 # Yeni endpoint ekle
 @app.route('/get-images', methods=['GET'])

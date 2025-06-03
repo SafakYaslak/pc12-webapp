@@ -224,6 +224,7 @@ interface StatisticDescription {
   description: "Variability of branching angles (in degrees). Shows the width of the distribution of angle values ​​around the mean.",
   medicalContext: "Evaluates the consistency of branching angles and stereotypical growth patterns. Low values ​​indicate uniform branching, high values ​​indicate variable branching patterns.",
   },
+  
   resultantVectorLength: {
   title: "Result Vector Length",
   description: "Strength of direction of angular distribution (value between 0 and 1). Values ​​close to 1 indicate strong directionality, values ​​close to 0 indicate random distribution.",
@@ -349,69 +350,71 @@ const StatisticsTable: React.FC<StatisticsTableProps> = ({ statistics }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200/50">
-              {Object.entries(statistics).map(([key, value]) => (
-                <motion.tr
-                  key={key}
-                  onHoverStart={() => setHoveredRow(key)}
-                  onHoverEnd={() => setHoveredRow(null)}
-                  className="group relative"
-                >
-                  <motion.td 
-                    className="w-[45%] px-6 py-4 whitespace-nowrap"
-                    initial={false}
-                    animate={{
-                      backgroundColor: hoveredRow === key ? 'rgba(244,63,94,0.05)' : 'transparent'
-                    }}
+              {Object.entries(statistics)
+                .filter(([key]) => !['averageAngle', 'minAngle', 'maxAngle', 'stdDevAngle', 'nodeDegree'].includes(key))
+                .map(([key, value]) => (
+                  <motion.tr
+                    key={key}
+                    onHoverStart={() => setHoveredRow(key)}
+                    onHoverEnd={() => setHoveredRow(null)}
+                    className="group relative"
                   >
-                    <div className="flex items-center space-x-3">
-                      <motion.div 
-                        className="flex-shrink-0"
-                        whileHover={{ scale: 1.2, rotate: 360 }}
-                        transition={{ duration: 0.3 }}
-                      >
-                        {statIconMap[key.toLowerCase()] || <LineChart className="w-5 h-5 text-gray-400" />}
-                      </motion.div>
-                      <div className="text-sm font-medium text-gray-900">
-                        {getStatisticInfo(key).title}
-                      </div>
-                    </div>
-                  </motion.td>
-                  <motion.td 
-                    className="w-[45%] px-6 py-4 whitespace-nowrap"
-                    initial={false}
-                    animate={{
-                      backgroundColor: hoveredRow === key ? 'rgba(244,63,94,0.05)' : 'transparent'
-                    }}
-                  >
-                    <motion.div
-                      className="text-sm font-mono"
-                      initial={{ color: '#374151' }}
+                    <motion.td 
+                      className="w-[45%] px-6 py-4 whitespace-nowrap"
+                      initial={false}
                       animate={{
-                        background: hoveredRow === key 
-                          ? 'linear-gradient(to right, #f43f5e, #f59e0b)' 
-                          : 'none',
-                        WebkitBackgroundClip: hoveredRow === key ? 'text' : 'none',
-                        WebkitTextFillColor: hoveredRow === key ? 'transparent' : '#374151'
+                        backgroundColor: hoveredRow === key ? 'rgba(244,63,94,0.05)' : 'transparent'
                       }}
                     >
-                      {value}
-                    </motion.div>
-                  </motion.td>
-                  <td className="w-[10%] px-2 py-4 relative">
-                    <button
-                      onClick={() => setActivePopover(activePopover === key ? null : key)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full 
-                        transition-all duration-200 
-                        hover:shadow-lg hover:shadow-rose-200/50 
-                        hover:bg-rose-100/50"
+                      <div className="flex items-center space-x-3">
+                        <motion.div 
+                          className="flex-shrink-0"
+                          whileHover={{ scale: 1.2, rotate: 360 }}
+                          transition={{ duration: 0.3 }}
+                        >
+                          {statIconMap[key.toLowerCase()] || <LineChart className="w-5 h-5 text-gray-400" />}
+                        </motion.div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {getStatisticInfo(key).title}
+                        </div>
+                      </div>
+                    </motion.td>
+                    <motion.td 
+                      className="w-[45%] px-6 py-4 whitespace-nowrap"
+                      initial={false}
+                      animate={{
+                        backgroundColor: hoveredRow === key ? 'rgba(244,63,94,0.05)' : 'transparent'
+                      }}
                     >
-                      <Info 
-                        size={16} 
-                        className="text-rose-500" 
-                      />
-                    </button>
-                  </td>
-                </motion.tr>
+                      <motion.div
+                        className="text-sm font-mono"
+                        initial={{ color: '#374151' }}
+                        animate={{
+                          background: hoveredRow === key 
+                            ? 'linear-gradient(to right, #f43f5e, #f59e0b)' 
+                            : 'none',
+                          WebkitBackgroundClip: hoveredRow === key ? 'text' : 'none',
+                          WebkitTextFillColor: hoveredRow === key ? 'transparent' : '#374151'
+                        }}
+                      >
+                        {value}
+                      </motion.div>
+                    </motion.td>
+                    <td className="w-[10%] px-2 py-4 relative">
+                      <button
+                        onClick={() => setActivePopover(activePopover === key ? null : key)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-full 
+                          transition-all duration-200 
+                          hover:shadow-lg hover:shadow-rose-200/50 
+                          hover:bg-rose-100/50"
+                      >
+                        <Info 
+                          size={16} 
+                          className="text-rose-500" 
+                        />
+                      </button>
+                    </td>
+                  </motion.tr>
               ))}
             </tbody>
           </table>

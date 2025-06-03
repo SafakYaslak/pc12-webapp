@@ -158,7 +158,9 @@ const ComparisonView: React.FC<ComparisonViewProps> = ({
                   className="absolute top-0 left-0 w-full h-full flex items-center justify-center"
                   style={{ 
                     clipPath: viewMode === 'split' ? `inset(0 0 0 ${splitPosition}%)` : 'none',
-                    display: viewMode === 'cell' ? 'none' : 'flex'
+                    display: viewMode === 'cell' ? 'none' : 'flex',
+                    // Overlay modunda opacity'yi kaldır
+                    opacity: viewMode === 'overlay' ? 1 : 1
                   }}
                 >
                   <img 
